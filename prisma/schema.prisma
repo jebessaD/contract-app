@@ -41,15 +41,18 @@ model Session {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  name           String?
-  email          String?         @unique
-  emailVerified  DateTime?
-  image          String?
-  accounts       Account[]
-  sessions       Session[]
-  googleAccounts GoogleAccount[]
-  hubspotAccount HubSpotAccount?
+  id                String    @id @default(cuid())
+  name              String?
+  email             String?   @unique
+  emailVerified     DateTime?
+  image             String?
+  accounts          Account[]
+  sessions          Session[]
+  googleAccounts    GoogleAccount[]
+  hubspotAccount    HubSpotAccount?
+  hubSpotOAuthStates HubSpotOAuthState[]
+
+  @@index([email])
 }
 
 model VerificationToken {
@@ -90,6 +93,17 @@ model HubSpotAccount {
   hubId         String   @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model HubSpotOAuthState {
+  id        String   @id @default(cuid())
+  userId    String
+  state     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }

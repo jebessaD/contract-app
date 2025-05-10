@@ -5,6 +5,7 @@ import ConnectGoogleAccount from "./ConnectGoogleAccount";
 import { prisma } from "@/lib/prisma";
 import type { GoogleAccount, User } from "@prisma/client";
 import HubspotSettings from "./hubspot-settings";
+import SchedulingWindows from "./scheduling-windows";
 
 export default async function SettingsPage({
   searchParams,
@@ -34,8 +35,9 @@ export default async function SettingsPage({
     where: { email: session.user.email },
     include: {
       hubspotAccount: true,
+      schedulingWindows: true,
     },
-  }) as (User & { hubspotAccount: any }) | null;
+  }) as (User & { hubspotAccount: any; schedulingWindows: any[] }) | null;
 
   if (!user) {
     redirect("/auth/signin");
@@ -138,6 +140,8 @@ export default async function SettingsPage({
         isConnected={!!hubspotAccount}
         hubId={hubspotAccount?.hubId}
       />
+
+      <SchedulingWindows initialWindows={user.schedulingWindows} />
     </div>
   );
 } 

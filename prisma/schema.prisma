@@ -51,6 +51,7 @@ model User {
   googleAccounts    GoogleAccount[]
   hubspotAccount    HubSpotAccount?
   hubSpotOAuthStates HubSpotOAuthState[]
+  schedulingWindows SchedulingWindow[]
 
   @@index([email])
 }
@@ -103,6 +104,19 @@ model HubSpotOAuthState {
   state     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model SchedulingWindow {
+  id        String   @id @default(cuid())
+  userId    String
+  startTime String   // Format: "HH:mm"
+  endTime   String   // Format: "HH:mm"
+  weekdays  String[] // Array of weekdays: ["MONDAY", "TUESDAY", etc.]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])

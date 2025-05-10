@@ -15,6 +15,7 @@
     "@hubspot/api-client": "^12.1.0",
     "@prisma/client": "^6.7.0",
     "googleapis": "^148.0.0",
+    "nanoid": "^5.1.5",
     "next": "15.3.2",
     "next-auth": "^4.24.11",
     "prisma": "^6.7.0",

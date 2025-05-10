@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import type { GoogleAccount, User } from "@prisma/client";
 import HubspotSettings from "./hubspot-settings";
 import SchedulingWindows from "./scheduling-windows";
+import SchedulingLinks from "./scheduling-links";
 
 export default async function SettingsPage({
   searchParams,
@@ -142,6 +143,8 @@ export default async function SettingsPage({
       />
 
       <SchedulingWindows initialWindows={user.schedulingWindows} />
+
+      <SchedulingLinks />
     </div>
   );
 } 

@@ -185,7 +185,7 @@ export default async function DashboardPage() {
                                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                               />
                             </svg>
-                            {new Date(booking.scheduledTime).toLocaleString()}
+                            {new Date(booking.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(new Date(booking.scheduledTime).getTime() + booking.schedulingLink.meetingLength * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </p>
                           <BookingDetails booking={booking} />
                         </div>

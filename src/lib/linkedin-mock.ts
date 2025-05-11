@@ -10,6 +10,13 @@ interface LinkedInProfile {
     duration: string;
     description: string;
   }>;
+  skills: string[];
+  education: Array<{
+    school: string;
+    degree_name?: string;
+    field_of_study?: string;
+    duration?: string;
+  }>;
 }
 
 export async function mockLinkedInScrape(linkedinUrl: string): Promise<LinkedInProfile> {
@@ -37,5 +44,22 @@ export async function mockLinkedInScrape(linkedinUrl: string): Promise<LinkedInP
         description: "Developed and maintained web applications using React and Node.js.",
       },
     ],
+    skills: [
+      "JavaScript",
+      "TypeScript",
+      "React",
+      "Node.js",
+      "AWS",
+      "Docker",
+      "Kubernetes"
+    ],
+    education: [
+      {
+        school: "University of Technology",
+        degree_name: "Bachelor of Science",
+        field_of_study: "Computer Science",
+        duration: "2014 - 2018"
+      }
+    ]
   };
 } 

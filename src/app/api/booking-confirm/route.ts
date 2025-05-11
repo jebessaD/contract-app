@@ -3,9 +3,10 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { searchHubspotContact, getHubspotClient } from "@/lib/hubspot";
-import { mockLinkedInScrape } from "@/lib/linkedin-mock";
+import { linkedInService } from "@/lib/linkedin";
 import { augmentAnswers } from "@/lib/ai-augment";
 import { sendConfirmationEmail, sendAdvisorNotificationEmail } from "@/lib/email";
+import type { LinkedInData } from "@/lib/linkedin.d";
 import { Prisma } from "@prisma/client";
 
 interface BookingAnswers {
@@ -90,8 +91,81 @@ export async function POST(req: Request) {
       // Continue without HubSpot data
     }
 
-    // If no HubSpot contact found, scrape LinkedIn (mocked for now)
-    const linkedinData = !hubspotContact ? await mockLinkedInScrape(linkedinUrl) : null;
+    // If no HubSpot contact found, try to get LinkedIn data
+    let linkedinData: LinkedInData | null = null;
+    if (!hubspotContact && linkedinUrl) {
+      try {
+        console.log("Attempting to fetch LinkedIn data for URL:", linkedinUrl);
+        const profile = await linkedInService.getEmployeeProfile(linkedinUrl);
+        console.log("Successfully fetched LinkedIn profile:", {
+          name: profile.full_name,
+          title: profile.headline
+        });
+
+        linkedinData = {
+          name: profile.full_name,
+          title: profile.headline || '',
+          company: profile.experiences?.[0]?.company || '',
+          location: profile.location || profile.city ? `${profile.city}, ${profile.country}` : '',
+          summary: profile.summary || '',
+          experience: profile.experiences?.map(exp => ({
+            title: exp.title,
+            company: exp.company,
+            duration: `${exp.starts_at?.year || ''} - ${exp.ends_at?.year || 'Present'}`,
+            description: exp.description || ''
+          })) || [],
+          skills: profile.skills?.map(skill => skill.name) || [],
+          education: profile.education?.map(edu => ({
+            school: edu.school,
+            degree_name: edu.degree_name || '',
+            field_of_study: edu.field_of_study || '',
+            duration: `${edu.starts_at?.year || ''} - ${edu.ends_at?.year || 'Present'}`
+          })) || []
+        };
+      } catch (error) {
+        console.error("Error fetching LinkedIn data:", error);
+        // If LinkedIn fetch fails, try domain-based search
+        try {
+          const domain = email.split('@')[1];
+          if (domain) {
+            console.log("Attempting domain-based search for:", domain);
+            const company = await linkedInService.findCompanyByDomain(domain);
+            if (company.linkedin_url) {
+              const employees = await linkedInService.searchEmployeesByTitle(
+                company.linkedin_url,
+                'Software Engineer'
+              );
+              if (employees.length > 0) {
+                const employee = employees[0];
+                linkedinData = {
+                  name: employee.full_name,
+                  title: employee.headline || '',
+                  company: employee.experiences?.[0]?.company || '',
+                  location: employee.location || employee.city ? `${employee.city}, ${employee.country}` : '',
+                  summary: employee.summary || '',
+                  experience: employee.experiences?.map(exp => ({
+                    title: exp.title,
+                    company: exp.company,
+                    duration: `${exp.starts_at?.year || ''} - ${exp.ends_at?.year || 'Present'}`,
+                    description: exp.description || ''
+                  })) || [],
+                  skills: employee.skills?.map(skill => skill.name) || [],
+                  education: employee.education?.map(edu => ({
+                    school: edu.school,
+                    degree_name: edu.degree_name || '',
+                    field_of_study: edu.field_of_study || '',
+                    duration: `${edu.starts_at?.year || ''} - ${edu.ends_at?.year || 'Present'}`
+                  })) || []
+                } as LinkedInData;
+              }
+            }
+          }
+        } catch (domainError) {
+          console.error("Error in domain-based search:", domainError);
+        }
+      }
+    }
+
     console.log("LinkedIn data:", linkedinData ? "found" : "not found");
 
     // Augment answers with AI using context
@@ -106,88 +180,57 @@ export async function POST(req: Request) {
     const endTime = new Date(startTime.getTime() + booking.schedulingLink.meetingLength * 60000);
 
     // Process HubSpot notes and deals
-    const processedNotes: Note[] = hubspotContact?.notes?.map(note => ({
+    const processedNotes = hubspotContact?.notes?.map(note => ({
       body: note.body || '',
       timestamp: note.timestamp || new Date().toISOString()
     })) || [];
 
-    const processedDeals: Deal[] = hubspotContact?.deals?.map(deal => ({
+    const processedDeals = hubspotContact?.deals?.map(deal => ({
       name: deal.name || 'Unnamed Deal',
       amount: deal.amount || '0',
       stage: deal.stage || 'Unknown'
     })) || [];
 
     try {
-      // Send confirmation email to attendee
-      await sendConfirmationEmail({
-        to: email,
+      console.log("Attempting to send confirmation email with data:", {
+        email,
         bookingDetails: {
           startTime,
           endTime,
           meetingLength: booking.schedulingLink.meetingLength,
-          hostName: booking.schedulingLink.user.name || "Your host",
-          hostEmail: booking.schedulingLink.user.email || "",
+          hostName: booking.schedulingLink.user.name,
+          hostEmail: booking.schedulingLink.user.email,
         },
         enrichedAnswers: {
           ...enrichedAnswers,
           originalAnswers: answers,
           notes: processedNotes,
-          deals: processedDeals
-        },
+          deals: processedDeals,
+          linkedinData
+        }
       });
-      console.log("Sent confirmation email to attendee");
-    } catch (error) {
-      console.error("Error sending confirmation email:", error);
-      throw error;
-    }
-
-    try {
-      // Send notification email to advisor
-      await sendAdvisorNotificationEmail({
-        advisorEmail: booking.schedulingLink.user.email || '',
-        attendeeEmail: email,
-        attendeeName: hubspotContact?.properties.firstname 
-          ? `${hubspotContact.properties.firstname} ${hubspotContact.properties.lastname || ''}`
-          : linkedinData?.name || email,
-        bookingDetails: {
-          startTime,
-          endTime,
-          meetingLength: booking.schedulingLink.meetingLength,
-          hostName: booking.schedulingLink.user.name || "Your host",
-          hostEmail: booking.schedulingLink.user.email || "",
-        },
-        enrichedAnswers: {
-          ...enrichedAnswers,
-          originalAnswers: answers,
-          notes: processedNotes,
-          deals: processedDeals
-        },
-        hubspotContact: hubspotContact ? {
-          id: hubspotContact.id,
-          properties: Object.fromEntries(
-            Object.entries(hubspotContact.properties)
-              .filter(([_, value]) => value !== undefined)
-          ) as Record<string, string>
-        } : null,
+      // Send notification email to both advisor and attendee
+      await sendAdvisorNotificationEmail(
+        email,
+        booking.schedulingLink.user.email || '',
+        new Date(booking.scheduledTime),
+        bookingId,
         linkedinData,
-        hubspotContext: hubspotContact ? {
-          contact: {
-            email: hubspotContact.properties.email,
-            firstname: hubspotContact.properties.firstname,
-            lastname: hubspotContact.properties.lastname,
-            company: hubspotContact.properties.company,
-            lifecyclestage: hubspotContact.properties.lifecyclestage,
-          },
-          recentNotes: processedNotes.map(note => ({
-            body: note.body,
-            timestamp: new Date(note.timestamp)
-          })),
-          recentDeals: processedDeals
-        } : null,
-      });
-      console.log("Sent notification email to advisor");
+        {
+          ...enrichedAnswers,
+          originalAnswers: answers,
+          notes: processedNotes,
+          deals: processedDeals,
+          name: hubspotContact?.properties.firstname 
+            ? `${hubspotContact.properties.firstname} ${hubspotContact.properties.lastname || ''}`
+            : linkedinData?.name || email,
+          duration: `${booking.schedulingLink.meetingLength} minutes`,
+          hostName: booking.schedulingLink.user.name || 'Your host'
+        }
+      );
+      console.log("Sent notification emails to both advisor and attendee");
     } catch (error) {
-      console.error("Error sending advisor notification:", error);
+      console.error("Error sending notification emails:", error);
       throw error;
     }
 
@@ -218,9 +261,13 @@ export async function POST(req: Request) {
         stack: error.stack,
         name: error.name
       });
+      return NextResponse.json(
+        { error: "Failed to process booking confirmation", details: error.message },
+        { status: 500 }
+      );
     }
     return NextResponse.json(
-      { error: "Failed to process booking confirmation", details: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Failed to process booking confirmation", details: "Unknown error" },
       { status: 500 }
     );
   }

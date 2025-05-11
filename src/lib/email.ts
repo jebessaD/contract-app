@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { linkedInService } from './linkedin';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -28,16 +29,41 @@ interface BookingAnswers {
 }
 
 interface EnrichedAnswers {
-  [key: string]: string | Note[] | Deal[] | undefined | BookingAnswers[];
+  [key: string]: string | Note[] | Deal[] | BookingAnswers[] | LinkedInData | null | undefined;
   notes?: Note[];
   deals?: Deal[];
   originalAnswers?: BookingAnswers[];
+  linkedinData?: LinkedInData | null;
+  linkedinUrl?: string;
+}
+
+export interface LinkedInData {
+  name: string;
+  title: string;
+  company: string;
+  location: string;
+  summary: string;
+  experience: Array<{
+    title: string;
+    company: string;
+    duration: string;
+    description?: string;
+  }>;
+  skills: string[];
+  education: Array<{
+    school: string;
+    degree_name?: string;
+    field_of_study?: string;
+    duration?: string;
+  }>;
 }
 
 interface EmailParams {
   to: string;
   bookingDetails: BookingDetails;
-  enrichedAnswers: EnrichedAnswers;
+  enrichedAnswers: EnrichedAnswers & {
+    linkedinData?: LinkedInData | null;
+  };
 }
 
 interface HubspotContext {
@@ -69,18 +95,7 @@ interface AdvisorNotificationParams {
     id: string;
     properties: Record<string, string>;
   } | null;
-  linkedinData?: {
-    name?: string;
-    title?: string;
-    company?: string;
-    location?: string;
-    summary?: string;
-    experience?: Array<{
-      title: string;
-      company: string;
-      duration: string;
-    }>;
-  } | null;
+  linkedinData?: LinkedInData | null;
   hubspotContext?: HubspotContext | null;
   hubspotError?: {
     message: string;
@@ -94,7 +109,7 @@ export async function sendConfirmationEmail({
 }: EmailParams) {
   try {
     const { data, error } = await resend.emails.send({
-      from: "Scheduling <scheduling@updates.jebessa.tech>",
+      from: "Scheduling <scheduling@updates.alberttutorial.com>",
       to,
       subject: `Meeting Confirmation: ${bookingDetails.hostName}`,
       html: `
@@ -126,6 +141,36 @@ export async function sendConfirmationEmail({
 
         <h2>Contact Context:</h2>
         <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          ${enrichedAnswers.linkedinData ? `
+            <h3>LinkedIn Profile</h3>
+            <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+              ${enrichedAnswers.linkedinData.title ? `
+                <li style="margin-bottom: 10px;">
+                  <strong>Title:</strong>
+                  <div style="margin: 5px 0;">${enrichedAnswers.linkedinData.title}</div>
+                </li>
+              ` : ''}
+              ${enrichedAnswers.linkedinData.company ? `
+                <li style="margin-bottom: 10px;">
+                  <strong>Company:</strong>
+                  <div style="margin: 5px 0;">${enrichedAnswers.linkedinData.company}</div>
+                </li>
+              ` : ''}
+              ${enrichedAnswers.linkedinData.location ? `
+                <li style="margin-bottom: 10px;">
+                  <strong>Location:</strong>
+                  <div style="margin: 5px 0;">${enrichedAnswers.linkedinData.location}</div>
+                </li>
+              ` : ''}
+              ${enrichedAnswers.linkedinData.summary ? `
+                <li style="margin-bottom: 10px;">
+                  <strong>Summary:</strong>
+                  <div style="margin: 5px 0;">${enrichedAnswers.linkedinData.summary}</div>
+                </li>
+              ` : ''}
+            </ul>
+          ` : ''}
+
           <h3>Contact Details</h3>
           <ul style="list-style-type: none; padding-left: 0; margin: 0;">
             ${Object.entries(enrichedAnswers)
@@ -148,7 +193,7 @@ export async function sendConfirmationEmail({
               enrichedAnswers.notes.map(note => `
                 <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
                   <strong>${new Date(note.timestamp).toLocaleString()}</strong>
-                  <div style="margin: 5px 0;">${note.body}</div>
+                  <div style="margin: 5px 0; white-space: pre-wrap;">${note.body.replace(/<[^>]*>/g, '')}</div>
                 </li>
               `).join('') : 
               '<li>No recent notes</li>'
@@ -184,146 +229,379 @@ export async function sendConfirmationEmail({
   }
 }
 
-export async function sendAdvisorNotificationEmail({
-  advisorEmail,
-  attendeeEmail,
-  attendeeName,
-  bookingDetails,
-  enrichedAnswers,
-  hubspotContact,
-  linkedinData,
-  hubspotContext,
-  hubspotError,
-}: AdvisorNotificationParams) {
+export async function sendAdvisorNotificationEmail(
+  attendeeEmail: string,
+  advisorEmail: string,
+  scheduledTime: Date,
+  bookingId: string,
+  linkedInData: LinkedInData | null,
+  enrichedAnswers?: Record<string, any>
+) {
+  console.log('Starting advisor notification email process...');
+  console.log('Initial LinkedIn data:', linkedInData);
+  console.log('Enriched answers:', enrichedAnswers);
+
   try {
-    const { data, error } = await resend.emails.send({
-      from: "Scheduling <scheduling@updates.jebessa.tech>",
-      to: advisorEmail,
-      subject: `New Meeting Scheduled with ${attendeeName}`,
-      html: `
-        <h1>New Meeting Scheduled</h1>
-        <p>You have a new meeting scheduled with ${attendeeName} (${attendeeEmail}).</p>
-        
-        <h2>Meeting Details:</h2>
-        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            <li style="margin-bottom: 10px;"><strong>Date:</strong> ${bookingDetails.startTime.toLocaleDateString()}</li>
-            <li style="margin-bottom: 10px;"><strong>Time:</strong> ${bookingDetails.startTime.toLocaleTimeString()} - ${bookingDetails.endTime.toLocaleTimeString()}</li>
-            <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${bookingDetails.meetingLength} minutes</li>
-          </ul>
-        </div>
+    let finalLinkedInData = linkedInData;
+    const attendeeName = enrichedAnswers?.name || 'Attendee';
+    const hostName = enrichedAnswers?.hostName || 'Your host';
+    const bookingDetails = {
+      startTime: scheduledTime,
+      endTime: new Date(scheduledTime.getTime() + (enrichedAnswers?.duration || 30) * 60000),
+      meetingLength: enrichedAnswers?.duration || 30,
+      hostName,
+      hostEmail: advisorEmail,
+      attendeeEmail
+    };
 
-        <h2>Attendee Responses:</h2>
-        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-          ${enrichedAnswers.originalAnswers ? `
-            <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-              ${(enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
-                <li style="margin-bottom: 15px;">
-                  <strong>${qa.question}:</strong>
-                  <div style="margin: 5px 0;">${qa.answer}</div>
-                </li>
-              `).join('')}
-            </ul>
-          ` : '<p>No responses provided</p>'}
-        </div>
+    // If no LinkedIn data is provided but we have an email, try to fetch it
+    if (!finalLinkedInData && attendeeEmail) {
+      console.log('No LinkedIn data provided, attempting to fetch from LinkedIn...');
+      
+      // First try to get data from LinkedIn URL if available
+      const linkedinUrl = enrichedAnswers?.linkedinUrl;
+      if (linkedinUrl) {
+        console.log('Found LinkedIn URL in enriched answers:', linkedinUrl);
+        try {
+          const profile = await linkedInService.getEmployeeProfile(linkedinUrl);
+          console.log('Successfully fetched profile from LinkedIn URL:', {
+            name: profile.full_name,
+            title: profile.headline
+          });
+          
+          finalLinkedInData = {
+            name: profile.full_name,
+            title: profile.headline || '',
+            company: profile.experiences?.[0]?.company || '',
+            location: profile.location || profile.city ? `${profile.city}, ${profile.country}` : '',
+            summary: profile.summary || '',
+            experience: profile.experiences?.map(exp => ({
+              title: exp.title,
+              company: exp.company,
+              duration: `${exp.starts_at?.year || ''} - ${exp.ends_at?.year || 'Present'}`,
+              description: exp.description || ''
+            })) || [],
+            skills: profile.skills?.map(skill => skill.name) || [],
+            education: profile.education?.map(edu => ({
+              school: edu.school,
+              degree_name: edu.degree_name || '',
+              field_of_study: edu.field_of_study || '',
+              duration: `${edu.starts_at?.year || ''} - ${edu.ends_at?.year || 'Present'}`
+            })) || []
+          };
+        } catch (error) {
+          console.error('Failed to fetch profile from LinkedIn URL:', error);
+          // Don't try domain-based search if we have a LinkedIn URL but failed to fetch
+          // This prevents unnecessary API calls
+          finalLinkedInData = null;
+        }
+      } else {
+        // Only try domain-based search if we don't have a LinkedIn URL
+        console.log('No LinkedIn URL provided, attempting domain-based search...');
+        const domain = attendeeEmail.split('@')[1];
+        if (domain && !domain.includes('gmail.com') && !domain.includes('yahoo.com') && !domain.includes('hotmail.com')) {
+          try {
+            const company = await linkedInService.findCompanyByDomain(domain);
+            console.log('Found company by domain:', {
+              name: company.name,
+              website: company.website
+            });
 
-        ${hubspotError ? `
-        <div style="background-color: #fff3cd; padding: 15px; margin: 15px 0; border: 1px solid #ffeeba; border-radius: 5px;">
-          <h3>⚠️ HubSpot Integration Warning</h3>
-          <p>Could not create/update HubSpot contact: ${hubspotError.message}</p>
-          <p>The booking is confirmed, but you may want to manually create the contact in HubSpot.</p>
-        </div>
-        ` : ''}
+            if (company.linkedin_url) {
+              const employees = await linkedInService.searchEmployeesByTitle(
+                company.linkedin_url,
+                'Software Engineer' // You might want to make this more dynamic
+              );
 
-        ${hubspotContact ? `
-        <h2>HubSpot Contact Information:</h2>
-        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            ${Object.entries(hubspotContact.properties)
-              .filter(([key, value]) => 
-                value !== undefined && 
-                value !== null && 
-                typeof value !== 'object')
-              .map(([key, value]) => `
-                <li style="margin-bottom: 10px;">
-                  <strong>${key}:</strong>
-                  <div style="margin: 5px 0;">${value}</div>
-                </li>
-              `).join('')}
-          </ul>
-        </div>
-        ` : ''}
+              if (employees.length > 0) {
+                const employee = employees[0];
+                console.log('Found matching employee:', {
+                  name: employee.full_name,
+                  title: employee.headline
+                });
 
-        ${hubspotContext ? `
-        <h2>HubSpot Context:</h2>
-        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-          <h3>Recent Notes:</h3>
-          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            ${hubspotContext.recentNotes.length > 0 ? 
-              hubspotContext.recentNotes.map(note => `
-                <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
-                  <strong>${note.timestamp.toLocaleDateString()}</strong>
-                  <div style="margin: 5px 0;">${note.body}</div>
-                </li>
-              `).join('') :
-              '<li>No recent notes</li>'
+                finalLinkedInData = {
+                  name: employee.full_name,
+                  title: employee.headline || '',
+                  company: employee.experiences?.[0]?.company || '',
+                  location: employee.location || employee.city ? `${employee.city}, ${employee.country}` : '',
+                  summary: employee.summary || '',
+                  experience: employee.experiences?.map(exp => ({
+                    title: exp.title,
+                    company: exp.company,
+                    duration: `${exp.starts_at?.year || ''} - ${exp.ends_at?.year || 'Present'}`,
+                    description: exp.description || ''
+                  })) || [],
+                  skills: employee.skills?.map(skill => skill.name) || [],
+                  education: employee.education?.map(edu => ({
+                    school: edu.school,
+                    degree_name: edu.degree_name || '',
+                    field_of_study: edu.field_of_study || '',
+                    duration: `${edu.starts_at?.year || ''} - ${edu.ends_at?.year || 'Present'}`
+                  })) || []
+                };
+              }
             }
-          </ul>
-
-          <h3>Recent Deals:</h3>
-          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            ${hubspotContext.recentDeals.length > 0 ?
-              hubspotContext.recentDeals.map(deal => `
-                <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
-                  <strong>${deal.name}</strong>
-                  <div style="margin: 5px 0;">Amount: ${deal.amount}</div>
-                  <div style="margin: 5px 0;">Stage: ${deal.stage}</div>
-                </li>
-              `).join('') :
-              '<li>No recent deals</li>'
-            }
-          </ul>
-        </div>
-        ` : ''}
-
-        ${linkedinData ? `
-        <h2>LinkedIn Information:</h2>
-        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            ${linkedinData.name ? `<li style="margin-bottom: 10px;"><strong>Name:</strong> ${linkedinData.name}</li>` : ''}
-            ${linkedinData.title ? `<li style="margin-bottom: 10px;"><strong>Title:</strong> ${linkedinData.title}</li>` : ''}
-            ${linkedinData.company ? `<li style="margin-bottom: 10px;"><strong>Company:</strong> ${linkedinData.company}</li>` : ''}
-            ${linkedinData.location ? `<li style="margin-bottom: 10px;"><strong>Location:</strong> ${linkedinData.location}</li>` : ''}
-            ${linkedinData.summary ? `
-              <li style="margin: 10px 0;">
-                <strong>Summary:</strong>
-                <div style="margin: 5px 0;">${linkedinData.summary}</div>
-              </li>
-            ` : ''}
-            ${linkedinData.experience && linkedinData.experience.length > 0 ? `
-              <li style="margin: 10px 0;">
-                <strong>Experience:</strong>
-                <ul style="margin: 5px 0; padding-left: 20px;">
-                  ${linkedinData.experience.map(exp => `
-                    <li style="margin: 5px 0;">${exp.title} at ${exp.company} (${exp.duration})</li>
-                  `).join('')}
-                </ul>
-              </li>
-            ` : ''}
-          </ul>
-        </div>
-        ` : ''}
-      `,
-    });
-
-    if (error) {
-      console.error('Failed to send advisor notification:', error);
-      throw error;
+          } catch (error) {
+            console.error('Failed to fetch data using domain-based search:', error);
+            finalLinkedInData = null;
+          }
+        } else {
+          console.log('Skipping domain-based search for personal email domain');
+          finalLinkedInData = null;
+        }
+      }
     }
 
-    return data;
-  } catch (error) {
-    console.error('Error sending advisor notification:', error);
+    console.log('Final LinkedIn data being used:', finalLinkedInData);
+
+    // Prepare the email content for advisor
+    const advisorEmailContent = `
+      <h1>Meeting Confirmation</h1>
+      <p>Your meeting has been scheduled with ${attendeeName}.</p>
+      
+      <h2>Meeting Details:</h2>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+          <li style="margin-bottom: 10px;"><strong>Date:</strong> ${bookingDetails.startTime.toLocaleDateString()}</li>
+          <li style="margin-bottom: 10px;"><strong>Time:</strong> ${bookingDetails.startTime.toLocaleTimeString()} - ${bookingDetails.endTime.toLocaleTimeString()}</li>
+          <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${bookingDetails.meetingLength} minutes</li>
+          <li style="margin-bottom: 10px;"><strong>Attendee Email:</strong> ${attendeeEmail}</li>
+        </ul>
+      </div>
+
+      <h2>Attendee Responses:</h2>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        ${enrichedAnswers?.originalAnswers ? `
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${(enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
+              <li style="margin-bottom: 15px;">
+                <strong>${qa.question}:</strong>
+                <div style="margin: 5px 0;">${qa.answer}</div>
+              </li>
+            `).join('')}
+          </ul>
+        ` : '<p>No responses provided</p>'}
+      </div>
+
+      <h2>Contact Context:</h2>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        ${finalLinkedInData ? `
+          <h3>LinkedIn Profile</h3>
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${finalLinkedInData.title ? `
+              <li style="margin-bottom: 10px;">
+                <strong>Title:</strong>
+                <div style="margin: 5px 0;">${finalLinkedInData.title}</div>
+              </li>
+            ` : ''}
+            ${finalLinkedInData.company ? `
+              <li style="margin-bottom: 10px;">
+                <strong>Company:</strong>
+                <div style="margin: 5px 0;">${finalLinkedInData.company}</div>
+              </li>
+            ` : ''}
+            ${finalLinkedInData.location ? `
+              <li style="margin-bottom: 10px;">
+                <strong>Location:</strong>
+                <div style="margin: 5px 0;">${finalLinkedInData.location}</div>
+              </li>
+            ` : ''}
+            ${finalLinkedInData.summary ? `
+              <li style="margin-bottom: 10px;">
+                <strong>Summary:</strong>
+                <div style="margin: 5px 0;">${finalLinkedInData.summary}</div>
+              </li>
+            ` : ''}
+          </ul>
+        ` : ''}
+
+        <h3>Contact Details</h3>
+        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+          ${Object.entries(enrichedAnswers || {})
+            .filter(([key, value]) => 
+              key.startsWith('HubSpot') && 
+              value !== undefined && 
+              value !== null &&
+              typeof value === 'string')
+            .map(([key, value]) => `
+              <li style="margin-bottom: 10px;">
+                <strong>${key.replace('HubSpot', '')}:</strong>
+                <div style="margin: 5px 0;">${value}</div>
+              </li>
+            `).join('')}
+        </ul>
+        
+        <h3>Recent Notes</h3>
+        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+          ${enrichedAnswers?.notes && enrichedAnswers.notes.length > 0 ? 
+            enrichedAnswers.notes.map((note: Note) => `
+              <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
+                <strong>${new Date(note.timestamp).toLocaleString()}</strong>
+                <div style="margin: 5px 0; white-space: pre-wrap;">${note.body.replace(/<[^>]*>/g, '')}</div>
+              </li>
+            `).join('') : 
+            '<li>No recent notes</li>'
+          }
+        </ul>
+
+        <h3>Recent Deals</h3>
+        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+          ${enrichedAnswers?.deals && enrichedAnswers.deals.length > 0 ? 
+            enrichedAnswers.deals.map((deal: Deal) => `
+              <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
+                <strong>${deal.name}</strong>
+                <div style="margin: 5px 0;">Amount: ${deal.amount}</div>
+                <div style="margin: 5px 0;">Stage: ${deal.stage}</div>
+              </li>
+            `).join('') : 
+            '<li>No recent deals</li>'
+          }
+        </ul>
+      </div>
+    `;
+
+    // Prepare the email content for attendee
+    const attendeeEmailContent = `
+      <h1>Meeting Confirmation</h1>
+      <p>Your meeting has been scheduled with ${hostName}.</p>
+      
+      <h2>Meeting Details:</h2>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+          <li style="margin-bottom: 10px;"><strong>Date:</strong> ${bookingDetails.startTime.toLocaleDateString()}</li>
+          <li style="margin-bottom: 10px;"><strong>Time:</strong> ${bookingDetails.startTime.toLocaleTimeString()} - ${bookingDetails.endTime.toLocaleTimeString()}</li>
+          <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${bookingDetails.meetingLength} minutes</li>
+          <li style="margin-bottom: 10px;"><strong>Host Email:</strong> ${advisorEmail}</li>
+        </ul>
+      </div>
+
+      <h2>Your Responses:</h2>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        ${enrichedAnswers?.originalAnswers ? `
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${(enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
+              <li style="margin-bottom: 15px;">
+                <strong>${qa.question}:</strong>
+                <div style="margin: 5px 0;">${qa.answer}</div>
+              </li>
+            `).join('')}
+          </ul>
+        ` : '<p>No responses provided</p>'}
+      </div>
+
+      <h2>Contact Context:</h2>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        ${finalLinkedInData ? `
+          <h3>LinkedIn Profile</h3>
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${finalLinkedInData.title ? `
+              <li style="margin-bottom: 10px;">
+                <strong>Title:</strong>
+                <div style="margin: 5px 0;">${finalLinkedInData.title}</div>
+              </li>
+            ` : ''}
+            ${finalLinkedInData.company ? `
+              <li style="margin-bottom: 10px;">
+                <strong>Company:</strong>
+                <div style="margin: 5px 0;">${finalLinkedInData.company}</div>
+              </li>
+            ` : ''}
+            ${finalLinkedInData.location ? `
+              <li style="margin-bottom: 10px;">
+                <strong>Location:</strong>
+                <div style="margin: 5px 0;">${finalLinkedInData.location}</div>
+              </li>
+            ` : ''}
+            ${finalLinkedInData.summary ? `
+              <li style="margin-bottom: 10px;">
+                <strong>Summary:</strong>
+                <div style="margin: 5px 0;">${finalLinkedInData.summary}</div>
+              </li>
+            ` : ''}
+          </ul>
+        ` : ''}
+
+        <h3>Contact Details</h3>
+        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+          ${Object.entries(enrichedAnswers || {})
+            .filter(([key, value]) => 
+              key.startsWith('HubSpot') && 
+              value !== undefined && 
+              value !== null &&
+              typeof value === 'string')
+            .map(([key, value]) => `
+              <li style="margin-bottom: 10px;">
+                <strong>${key.replace('HubSpot', '')}:</strong>
+                <div style="margin: 5px 0;">${value}</div>
+              </li>
+            `).join('')}
+        </ul>
+        
+        <h3>Recent Notes</h3>
+        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+          ${enrichedAnswers?.notes && enrichedAnswers.notes.length > 0 ? 
+            enrichedAnswers.notes.map((note: Note) => `
+              <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
+                <strong>${new Date(note.timestamp).toLocaleString()}</strong>
+                <div style="margin: 5px 0; white-space: pre-wrap;">${note.body.replace(/<[^>]*>/g, '')}</div>
+              </li>
+            `).join('') : 
+            '<li>No recent notes</li>'
+          }
+        </ul>
+
+        <h3>Recent Deals</h3>
+        <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+          ${enrichedAnswers?.deals && enrichedAnswers.deals.length > 0 ? 
+            enrichedAnswers.deals.map((deal: Deal) => `
+              <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
+                <strong>${deal.name}</strong>
+                <div style="margin: 5px 0;">Amount: ${deal.amount}</div>
+                <div style="margin: 5px 0;">Stage: ${deal.stage}</div>
+              </li>
+            `).join('') : 
+            '<li>No recent deals</li>'
+          }
+        </ul>
+      </div>
+    `;
+
+    // Send email to advisor
+    const advisorEmailResult = await resend.emails.send({
+      from: "Scheduling <scheduling@updates.alberttutorial.com>",
+      to: advisorEmail,
+      subject: `Meeting Confirmation: ${attendeeName}`,
+      html: advisorEmailContent
+    });
+
+    if (advisorEmailResult.error) {
+      console.error('Error sending email to advisor:', advisorEmailResult.error);
+      throw advisorEmailResult.error;
+    }
+
+    // Send email to attendee
+    const attendeeEmailResult = await resend.emails.send({
+      from: "Scheduling <scheduling@updates.alberttutorial.com>",
+      to: attendeeEmail,
+      subject: `Meeting Confirmation: ${hostName}`,
+      html: attendeeEmailContent
+    });
+
+    if (attendeeEmailResult.error) {
+      console.error('Error sending email to attendee:', attendeeEmailResult.error);
+      throw attendeeEmailResult.error;
+    }
+
+    console.log('Emails sent successfully to both advisor and attendee');
+    return { advisorEmailResult: advisorEmailResult.data, attendeeEmailResult: attendeeEmailResult.data };
+  } catch (error: any) {
+    console.error('Error in sendAdvisorNotificationEmail:', {
+      error: error.message,
+      stack: error.stack,
+      attendeeEmail,
+      advisorEmail
+    });
     throw error;
   }
 } 

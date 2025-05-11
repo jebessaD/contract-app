@@ -137,17 +137,21 @@ export const authOptions: NextAuthOptions = {
         token: { sub: token.sub }
       });
       if (session.user) {
-        session.user.id = token.sub!;
+        session.user = {
+          ...session.user,
+          id: token.sub!
+        };
       }
       return session;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       console.log("JWT callback:", { 
         token: { sub: token.sub },
         user: { id: user?.id, email: user?.email }
       });
       if (user) {
-        token.id = user.id;
+        token.sub = user.id;
+        token.email = user.email;
       }
       return token;
     },

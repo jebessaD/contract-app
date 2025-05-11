@@ -328,6 +328,8 @@ export default function BookingForm({ link, advisor }: BookingFormProps) {
           linkedinUrl: data.linkedinUrl,
           answers: data.answers,
           bookingId: bookingResult.booking.id,
+          scheduledTime: selectedTime,
+          advisorEmail: advisor.email
         }),
       });
 

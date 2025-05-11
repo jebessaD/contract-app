@@ -42,17 +42,6 @@ export async function GET(request: Request) {
       where: { userId: oauthState.userId },
     });
 
-    if (existingAccount) {
-      console.log("User already has a HubSpot account:", { userId: oauthState.userId });
-      // Clean up the OAuth state
-      await prisma.hubSpotOAuthState.delete({
-        where: { state },
-      });
-      return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/settings?error=HubSpot account already exists`
-      );
-    }
-
     console.log("Exchanging code for tokens...");
     // Exchange the code for tokens
     const tokenResponse = await fetch("https://api.hubapi.com/oauth/v1/token", {
@@ -70,35 +59,46 @@ export async function GET(request: Request) {
     });
 
     if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error("Failed to exchange code for tokens:", {
-        status: tokenResponse.status,
-        statusText: tokenResponse.statusText,
-        error: errorText
-      });
-      throw new Error(`Failed to exchange code for tokens: ${errorText}`);
+      console.error("Failed to exchange code for tokens:", await tokenResponse.text());
+      throw new Error("Failed to exchange code for tokens");
     }
 
     const tokens = await tokenResponse.json();
-    console.log("Successfully exchanged code for tokens");
+    console.log("Successfully obtained tokens");
 
-    console.log("Getting Hub ID...");
     // Get the Hub ID
     const hubResponse = await fetch("https://api.hubapi.com/oauth/v1/access-tokens/" + tokens.access_token);
     if (!hubResponse.ok) {
-      const errorText = await hubResponse.text();
-      console.error("Failed to get Hub ID:", {
-        status: hubResponse.status,
-        statusText: hubResponse.statusText,
-        error: errorText
-      });
-      throw new Error(`Failed to get Hub ID: ${errorText}`);
+      console.error("Failed to get Hub ID:", await hubResponse.text());
+      throw new Error("Failed to get Hub ID");
     }
 
     const hubData = await hubResponse.json();
-    console.log("Successfully got Hub ID:", { hubId: hubData.hub_id });
+    console.log("Successfully obtained Hub ID");
 
-    console.log("Creating HubSpot account...");
+    if (existingAccount) {
+      console.log("Updating existing HubSpot account:", { userId: oauthState.userId });
+      // Update the existing account instead of creating a new one
+      await prisma.hubSpotAccount.update({
+        where: { userId: oauthState.userId },
+        data: {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+          hubId: hubData.hub_id.toString(),
+        },
+      });
+      
+      // Clean up the OAuth state
+      await prisma.hubSpotOAuthState.delete({
+        where: { state },
+      });
+      
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL}/settings?success=Successfully reconnected to HubSpot`
+      );
+    }
+
     // Save the HubSpot account
     const hubspotAccount = await prisma.hubSpotAccount.create({
       data: {

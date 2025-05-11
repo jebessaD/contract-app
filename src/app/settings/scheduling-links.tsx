@@ -24,7 +24,7 @@ const schedulingLinkSchema = z.object({
   customQuestions: z.array(
     z.object({
       question: z.string().min(1, "Question is required"),
-      required: z.boolean().default(false),
+      required: z.boolean(),
     })
   ).min(1, "At least one question is required"),
 });
@@ -88,6 +88,8 @@ export default function SchedulingLinks() {
       meetingLength: 30,
       maxAdvanceDays: 30,
       customQuestions: [{ question: "", required: false }],
+      usageLimit: null,
+      expiresAt: null,
     },
   });
 
@@ -122,6 +124,7 @@ export default function SchedulingLinks() {
           ...data,
           customQuestions: validQuestions,
           expiresAt: data.expiresAt ? new Date(data.expiresAt).toISOString() : null,
+          usageLimit: data.usageLimit,
         }),
       });
 

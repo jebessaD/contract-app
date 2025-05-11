@@ -86,6 +86,33 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate usage limit if provided
+    if (data.usageLimit !== undefined && data.usageLimit !== null) {
+      if (typeof data.usageLimit !== 'number' || data.usageLimit < 1) {
+        return NextResponse.json(
+          { error: "Usage limit must be a positive number" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate expiration date if provided
+    if (data.expiresAt) {
+      const expirationDate = new Date(data.expiresAt);
+      if (isNaN(expirationDate.getTime())) {
+        return NextResponse.json(
+          { error: "Invalid expiration date format" },
+          { status: 400 }
+        );
+      }
+      if (expirationDate < new Date()) {
+        return NextResponse.json(
+          { error: "Expiration date must be in the future" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Generate a unique slug
     let slug;
     let isUnique = false;
@@ -110,25 +137,15 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log("Creating link with data:", {
-      userId: session.user.id,
-      slug,
-      usageLimit: data.usageLimit || null,
-      expiresAt: data.expiresAt || null,
-      meetingLength: data.meetingLength,
-      maxAdvanceDays: data.maxAdvanceDays,
-      customQuestions: validQuestions,
-    });
-
     const link = await prisma.schedulingLink.create({
       data: {
         userId: session.user.id,
         slug: slug!,
-        usageLimit: data.usageLimit || null,
-        expiresAt: data.expiresAt || null,
         meetingLength: data.meetingLength,
         maxAdvanceDays: data.maxAdvanceDays,
         customQuestions: validQuestions,
+        usageLimit: data.usageLimit,
+        expiresAt: data.expiresAt || null,
       },
     });
 

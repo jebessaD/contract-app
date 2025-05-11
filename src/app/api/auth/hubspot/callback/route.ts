@@ -8,64 +8,34 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
     const state = searchParams.get("state");
-    const error = searchParams.get("error");
-
-    if (error) {
-      return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_AUTH_URL}/settings?error=${encodeURIComponent(error)}`
-      );
-    }
 
     if (!code || !state) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_AUTH_URL}/settings?error=${encodeURIComponent("Missing code or state")}`
+        `${process.env.NEXT_PUBLIC_APP_URL}/settings?error=Missing code or state`
       );
     }
 
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_AUTH_URL}/settings?error=${encodeURIComponent("Not authenticated")}`
-      );
-    }
-
-    // Get user from database
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
-
-    if (!user) {
-      return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_AUTH_URL}/settings?error=${encodeURIComponent("User not found")}`
-      );
-    }
-
-    // Verify state
-    const oauthState = await prisma.hubSpotOAuthState.findFirst({
-      where: {
-        userId: user.id,
-        state,
-        expiresAt: {
-          gt: new Date(),
-        },
-      },
+    // Verify the state
+    const oauthState = await prisma.hubSpotOAuthState.findUnique({
+      where: { state },
     });
 
     if (!oauthState) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_AUTH_URL}/settings?error=${encodeURIComponent("Invalid state parameter")}`
+        `${process.env.NEXT_PUBLIC_APP_URL}/settings?error=Invalid state parameter`
       );
     }
 
-    const clientId = process.env.NEXT_PUBLIC_HUBSPOT_CLIENT_ID;
-    const clientSecret = process.env.NEXT_PUBLIC_HUBSPOT_CLIENT_SECRET;
-    const redirectUri = `${process.env.NEXT_PUBLIC_AUTH_URL}/api/auth/hubspot/callback`;
-
-    if (!clientId || !clientSecret || !redirectUri) {
-      throw new Error("Missing required environment variables");
+    if (new Date() > oauthState.expiresAt) {
+      await prisma.hubSpotOAuthState.delete({
+        where: { state },
+      });
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL}/settings?error=State expired`
+      );
     }
 
-    // Exchange code for tokens
+    // Exchange the code for tokens
     const tokenResponse = await fetch("https://api.hubapi.com/oauth/v1/token", {
       method: "POST",
       headers: {
@@ -73,74 +43,51 @@ export async function GET(request: Request) {
       },
       body: new URLSearchParams({
         grant_type: "authorization_code",
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
+        client_id: process.env.NEXT_PUBLIC_HUBSPOT_CLIENT_ID!,
+        client_secret: process.env.NEXT_PUBLIC_HUBSPOT_CLIENT_SECRET!,
+        redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/hubspot/callback`,
         code,
       }),
     });
 
     if (!tokenResponse.ok) {
-      const error = await tokenResponse.text();
-      console.error("Token exchange error:", error);
-      return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_AUTH_URL}/settings?error=${encodeURIComponent("Failed to exchange code for tokens")}`
-      );
+      throw new Error("Failed to exchange code for tokens");
     }
 
     const tokens = await tokenResponse.json();
 
-    // Get Hub ID
+    // Get the Hub ID
     const hubResponse = await fetch("https://api.hubapi.com/oauth/v1/access-tokens/" + tokens.access_token);
     if (!hubResponse.ok) {
-      return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_AUTH_URL}/settings?error=${encodeURIComponent("Failed to get Hub ID")}`
-      );
+      throw new Error("Failed to get Hub ID");
     }
 
     const hubData = await hubResponse.json();
-    console.log("HubSpot data received:", { hubId: hubData.hub_id });
 
-    // Convert hubId to string and ensure it exists
-    const hubId = String(hubData.hub_id);
-    if (!hubId) {
-      throw new Error("Invalid Hub ID received from HubSpot");
-    }
-
-    // Save tokens and Hub ID
-    await prisma.hubSpotAccount.upsert({
-      where: {
-        userId: user.id,
-      },
-      update: {
+    // Save the HubSpot account
+    await prisma.hubSpotAccount.create({
+      data: {
+        userId: oauthState.userId,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
         expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
-        hubId,
-      },
-      create: {
-        userId: user.id,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
-        hubId,
+        hubId: hubData.hub_id,
       },
     });
 
-    // Clean up used state
+    // Clean up the OAuth state
     await prisma.hubSpotOAuthState.delete({
-      where: {
-        id: oauthState.id,
-      },
+      where: { state },
     });
 
+    // Redirect to the settings page with success message
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_AUTH_URL}/settings?success=${encodeURIComponent("Successfully connected to HubSpot")}`
+      `${process.env.NEXT_PUBLIC_APP_URL}/settings?success=Successfully connected to HubSpot`
     );
   } catch (error) {
-    console.error("HubSpot callback error:", error);
+    console.error("Error in HubSpot callback:", error);
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_AUTH_URL}/settings?error=${encodeURIComponent(error instanceof Error ? error.message : "An unexpected error occurred")}`
+      `${process.env.NEXT_PUBLIC_APP_URL}/settings?error=Failed to complete HubSpot connection`
     );
   }
 } 

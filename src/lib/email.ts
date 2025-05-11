@@ -20,16 +20,22 @@ interface EmailParams {
   enrichedAnswers: EnrichedAnswers;
 }
 
-interface LinkedInData {
-  name?: string;
-  title?: string;
-  company?: string;
-  location?: string;
-  summary?: string;
-  experience?: Array<{
-    title: string;
-    company: string;
-    duration: string;
+interface HubspotContext {
+  contact: {
+    email: string;
+    firstname?: string;
+    lastname?: string;
+    company?: string;
+    lifecyclestage?: string;
+  };
+  recentNotes: Array<{
+    body: string;
+    timestamp: Date;
+  }>;
+  recentDeals: Array<{
+    name: string;
+    amount: string;
+    stage: string;
   }>;
 }
 
@@ -43,7 +49,22 @@ interface AdvisorNotificationParams {
     id: string;
     properties: Record<string, string>;
   } | null;
-  linkedinData?: LinkedInData | null;
+  linkedinData?: {
+    name?: string;
+    title?: string;
+    company?: string;
+    location?: string;
+    summary?: string;
+    experience?: Array<{
+      title: string;
+      company: string;
+      duration: string;
+    }>;
+  } | null;
+  hubspotContext?: HubspotContext | null;
+  hubspotError?: {
+    message: string;
+  } | null;
 }
 
 export async function sendConfirmationEmail({
@@ -94,6 +115,8 @@ export async function sendAdvisorNotificationEmail({
   enrichedAnswers,
   hubspotContact,
   linkedinData,
+  hubspotContext,
+  hubspotError,
 }: AdvisorNotificationParams) {
   try {
     const { data, error } = await resend.emails.send({
@@ -118,12 +141,44 @@ export async function sendAdvisorNotificationEmail({
             .join('')}
         </ul>
 
+        ${hubspotError ? `
+        <div style="background-color: #fff3cd; padding: 10px; margin: 10px 0; border: 1px solid #ffeeba; border-radius: 4px;">
+          <h3>HubSpot Integration Warning</h3>
+          <p>Could not create/update HubSpot contact: ${hubspotError.message}</p>
+          <p>The booking is confirmed, but you may want to manually create the contact in HubSpot.</p>
+        </div>
+        ` : ''}
+
         ${hubspotContact ? `
         <h2>HubSpot Contact Information:</h2>
         <ul>
           ${Object.entries(hubspotContact.properties)
             .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
             .join('')}
+        </ul>
+        ` : ''}
+
+        ${hubspotContext ? `
+        <h2>HubSpot Context:</h2>
+        <h3>Recent Notes:</h3>
+        <ul>
+          ${hubspotContext.recentNotes.map(note => `
+            <li>
+              <strong>${note.timestamp.toLocaleDateString()}:</strong>
+              <p>${note.body}</p>
+            </li>
+          `).join('')}
+        </ul>
+
+        <h3>Recent Deals:</h3>
+        <ul>
+          ${hubspotContext.recentDeals.map(deal => `
+            <li>
+              <strong>${deal.name}</strong>
+              <p>Amount: ${deal.amount}</p>
+              <p>Stage: ${deal.stage}</p>
+            </li>
+          `).join('')}
         </ul>
         ` : ''}
 

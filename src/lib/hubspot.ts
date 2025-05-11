@@ -144,7 +144,14 @@ export async function searchHubspotContact(email: string, accessToken: string) {
     const contact = response.results[0];
     return {
       id: contact.id,
-      properties: contact.properties,
+      properties: {
+        email: contact.properties.email || email,
+        firstname: contact.properties.firstname || undefined,
+        lastname: contact.properties.lastname || undefined,
+        company: contact.properties.company || undefined,
+        phone: contact.properties.phone || undefined,
+        linkedin_url: contact.properties.linkedin_url || undefined,
+      },
     };
   } catch (error) {
     console.error("Error searching HubSpot contact:", error);

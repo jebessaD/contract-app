@@ -297,7 +297,8 @@ export default function BookingForm({ link, advisor }: BookingFormProps) {
     setBookingStatus({ type: null, message: '' });
 
     try {
-      const response = await fetch("/api/bookings", {
+      // Create the booking
+      const bookingResponse = await fetch("/api/bookings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -310,10 +311,29 @@ export default function BookingForm({ link, advisor }: BookingFormProps) {
         }),
       });
 
-      const result = await response.json();
+      const bookingResult = await bookingResponse.json();
 
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to book meeting");
+      if (!bookingResponse.ok) {
+        throw new Error(bookingResult.error || "Failed to book meeting");
+      }
+
+      // Call the booking confirmation endpoint
+      const confirmResponse = await fetch("/api/booking-confirm", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: data.email,
+          linkedinUrl: data.linkedinUrl,
+          answers: data.answers,
+          bookingId: bookingResult.booking.id,
+        }),
+      });
+
+      if (!confirmResponse.ok) {
+        console.error("Failed to confirm booking:", await confirmResponse.json());
+        // Don't throw here, as the booking was created successfully
       }
 
       // Update the slot as booked

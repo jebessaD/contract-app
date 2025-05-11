@@ -107,31 +107,231 @@ export async function refreshHubspotToken(refreshToken: string) {
 }
 
 export async function getHubspotClient(userId: string) {
-  const hubspotAccount = await prisma.hubSpotAccount.findUnique({
-    where: { userId },
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { hubspotAccessToken: true },
   });
 
-  if (!hubspotAccount) {
-    throw new Error("No HubSpot account found");
+  if (!user?.hubspotAccessToken) {
+    throw new Error("No HubSpot access token found for user");
   }
 
-  // Check if token needs refresh
-  if (new Date() >= hubspotAccount.expiresAt) {
-    const tokens = await refreshHubspotToken(hubspotAccount.refreshToken);
+  const hubspotClient = new Client({ accessToken: user.hubspotAccessToken });
+  return { client: hubspotClient, accessToken: user.hubspotAccessToken };
+}
+
+export async function searchHubspotContact(email: string, accessToken: string) {
+  try {
+    const hubspotClient = new Client({ accessToken });
+    const response = await hubspotClient.crm.contacts.searchApi.doSearch({
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: "email",
+              operator: "EQ",
+              value: email,
+            },
+          ],
+        },
+      ],
+    });
+
+    if (response.total === 0) {
+      return null;
+    }
+
+    const contact = response.results[0];
+    return {
+      id: contact.id,
+      properties: contact.properties,
+    };
+  } catch (error) {
+    console.error("Error searching HubSpot contact:", error);
+    return null;
+  }
+}
+
+export async function createHubspotContact(
+  email: string,
+  accessToken: string,
+  data: {
+    firstname?: string;
+    lastname?: string;
+    company?: string;
+  }
+) {
+  try {
+    const hubspotClient = new Client({ accessToken });
     
-    await prisma.hubSpotAccount.update({
-      where: { id: hubspotAccount.id },
-      data: {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+    // Create the contact
+    const contact = await hubspotClient.crm.contacts.basicApi.create({
+      properties: {
+        email,
+        firstname: data.firstname || "",
+        lastname: data.lastname || "",
+        company: data.company || "",
+        lifecyclestage: "lead",
       },
     });
 
-    hubspotClient.setAccessToken(tokens.access_token);
-  } else {
-    hubspotClient.setAccessToken(hubspotAccount.accessToken);
-  }
+    // Add a note about the booking
+    await hubspotClient.crm.objects.notes.basicApi.create({
+      properties: {
+        hs_timestamp: Date.now().toString(),
+        hs_note_body: `Automatically created after booking on ${new Date().toLocaleDateString()}.`,
+        hs_attachment_ids: "",
+        hubspot_owner_id: "",
+      },
+      associations: [
+        {
+          to: { id: contact.id },
+          types: [
+            {
+              associationCategory: "HUBSPOT_DEFINED",
+              associationTypeId: 1,
+            },
+          ],
+        },
+      ],
+    });
 
-  return hubspotClient;
+    return {
+      id: contact.id,
+      properties: contact.properties,
+    };
+  } catch (error) {
+    console.error("Error creating HubSpot contact:", error);
+    throw error;
+  }
+}
+
+export async function addBookingNoteToContact(
+  contactId: string,
+  accessToken: string,
+  bookingDetails: {
+    startTime: Date;
+    endTime: Date;
+    meetingLength: number;
+    hostName: string;
+  }
+) {
+  try {
+    const hubspotClient = new Client({ accessToken });
+    
+    await hubspotClient.crm.objects.notes.basicApi.create({
+      properties: {
+        hs_timestamp: Date.now().toString(),
+        hs_note_body: `New meeting scheduled with ${bookingDetails.hostName} on ${bookingDetails.startTime.toLocaleDateString()} at ${bookingDetails.startTime.toLocaleTimeString()} (${bookingDetails.meetingLength} minutes).`,
+        hs_attachment_ids: "",
+        hubspot_owner_id: "",
+      },
+      associations: [
+        {
+          to: { id: contactId },
+          types: [
+            {
+              associationCategory: "HUBSPOT_DEFINED",
+              associationTypeId: 1,
+            },
+          ],
+        },
+      ],
+    });
+  } catch (error) {
+    console.error("Error adding booking note to HubSpot contact:", error);
+    throw error;
+  }
+}
+
+export async function getContactContext(contactId: string, accessToken: string) {
+  try {
+    const hubspotClient = new Client({ accessToken });
+    
+    // Get contact details
+    const contact = await hubspotClient.crm.contacts.basicApi.getById(contactId, [
+      "email",
+      "firstname",
+      "lastname",
+      "company",
+      "lifecyclestage",
+    ]);
+
+    // Get recent notes
+    const notes = await hubspotClient.crm.objects.notes.searchApi.doSearch({
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: "hs_timestamp",
+              operator: "GTE",
+              value: (Date.now() - 30 * 24 * 60 * 60 * 1000).toString(), // Last 30 days
+            },
+          ],
+        },
+      ],
+      sorts: [{ propertyName: "hs_timestamp", direction: "DESCENDING" }],
+      properties: ["hs_note_body", "hs_timestamp"],
+      limit: 5,
+    });
+
+    // Get associated deals
+    const deals = await hubspotClient.crm.deals.searchApi.doSearch({
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: "associations.contact",
+              operator: "EQ",
+              value: contactId,
+            },
+          ],
+        },
+      ],
+      properties: ["dealname", "amount", "dealstage"],
+      limit: 5,
+    });
+
+    return {
+      contact: contact.properties,
+      recentNotes: notes.results.map(note => ({
+        body: note.properties.hs_note_body,
+        timestamp: new Date(parseInt(note.properties.hs_timestamp)),
+      })),
+      recentDeals: deals.results.map(deal => ({
+        name: deal.properties.dealname,
+        amount: deal.properties.amount,
+        stage: deal.properties.dealstage,
+      })),
+    };
+  } catch (error) {
+    console.error("Error getting contact context:", error);
+    return null;
+  }
+}
+
+export async function updateHubspotContact(
+  contactId: string,
+  data: {
+    email?: string;
+    firstname?: string;
+    lastname?: string;
+    company?: string;
+    phone?: string;
+    linkedin_url?: string;
+  },
+  accessToken: string
+) {
+  try {
+    const client = new Client({ accessToken });
+
+    const response = await client.crm.contacts.basicApi.update(contactId, {
+      properties: data,
+    });
+
+    return response;
+  } catch (error) {
+    console.error("Error updating HubSpot contact:", error);
+    throw new Error("Failed to update HubSpot contact");
+  }
 } 

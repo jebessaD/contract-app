@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { getHubspotClient } from "@/lib/hubspot";
+import type { FilterOperatorEnum } from "@hubspot/api-client/lib/codegen/crm/objects/feedback_submissions";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,13 +18,13 @@ export async function GET(request: NextRequest) {
 
     const hubspot = await getHubspotClient(session.user.id);
     // Search for contact by email
-    const searchResponse = await hubspot.crm.contacts.searchApi.doSearch({
+    const searchResponse = await hubspot.client.crm.contacts.searchApi.doSearch({
       filterGroups: [
         {
           filters: [
             {
               propertyName: "email",
-              operator: "EQ",
+              operator: "EQ" as FilterOperatorEnum,
               value: email,
             },
           ],
@@ -39,8 +40,8 @@ export async function GET(request: NextRequest) {
 
     const contact = searchResponse.results[0];
     // Fetch notes (engagements) and deals
-    const notes = await hubspot.crm.objects.notes.associationsApi.getAll(contact.id, "contact");
-    const deals = await hubspot.crm.contacts.associationsApi.getAll(contact.id, "deals");
+    const notes = await hubspot.client.crm.objects.notes.basicApi.getPage();
+    const deals = await hubspot.client.crm.contacts.basicApi.getPage();
 
     return NextResponse.json({
       contact,

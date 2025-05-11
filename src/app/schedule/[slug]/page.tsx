@@ -1,14 +1,22 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import BookingForm from "./BookingForm";
+import { Metadata } from "next";
 
-export default async function SchedulingPage({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export const metadata: Metadata = {
+  title: "Schedule a Meeting",
+};
+
+type Props = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+};
+
+export default async function SchedulingPage({ params }: Props) {
+  const { slug } = await params;
+
   const link = await prisma.schedulingLink.findUnique({
-    where: { slug: params.slug },
+    where: { slug: slug },
     include: {
       user: {
         include: {
@@ -27,7 +35,7 @@ export default async function SchedulingPage({
   // Transform the data for the BookingForm
   const advisor = {
     name: link.user.name || "Advisor",
-    email: link.user.email,
+    email: link.user.email || "",
     schedulingWindows: link.user.schedulingWindows.map((window) => ({
       startTime: window.startTime,
       endTime: window.endTime,
@@ -49,7 +57,7 @@ export default async function SchedulingPage({
               id: link.id,
               meetingLength: link.meetingLength,
               maxAdvanceDays: link.maxAdvanceDays,
-              customQuestions: link.customQuestions,
+              customQuestions: (Array.isArray(link.customQuestions) ? link.customQuestions : []) as { question: string; required: boolean; }[],
             }}
             advisor={advisor}
           />

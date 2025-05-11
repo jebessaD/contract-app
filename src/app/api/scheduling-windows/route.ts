@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const windows = await prisma.schedulingWindow.findMany({
@@ -16,7 +15,7 @@ export async function GET() {
         userId: session.user.id,
       },
       orderBy: {
-        createdAt: "asc",
+        startTime: "asc",
       },
     });
 
@@ -33,12 +32,19 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { windows } = await request.json();
+    const data = await request.json();
+    const { windows } = data;
+
+    if (!Array.isArray(windows)) {
+      return NextResponse.json(
+        { error: "Windows must be an array" },
+        { status: 400 }
+      );
+    }
 
     // Delete existing windows
     await prisma.schedulingWindow.deleteMany({
@@ -47,15 +53,15 @@ export async function POST(request: Request) {
       },
     });
 
-    // Create new windows one by one to get their IDs
+    // Create new windows
     const createdWindows = await Promise.all(
-      windows.map((window: any) =>
+      windows.map((window) =>
         prisma.schedulingWindow.create({
           data: {
-            userId: session.user.id,
             startTime: window.startTime,
             endTime: window.endTime,
             weekdays: window.weekdays,
+            userId: session.user.id,
           },
         })
       )

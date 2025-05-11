@@ -66,70 +66,61 @@ interface EmailParams {
   };
 }
 
-interface HubspotContext {
-  contact: {
-    email: string;
-    firstname?: string;
-    lastname?: string;
-    company?: string;
-    lifecyclestage?: string;
-  };
-  recentNotes: Array<{
-    body: string;
-    timestamp: Date;
-  }>;
-  recentDeals: Array<{
-    name: string;
-    amount: string;
-    stage: string;
-  }>;
+interface EmailResponse {
+  id?: string;
+  from: string;
+  to: string;
+  subject: string;
+  error?: string;
+}
+
+interface EmailTemplateData {
+  [key: string]: string | number | boolean | object | undefined;
 }
 
 interface AdvisorNotificationParams {
-  advisorEmail: string;
   attendeeEmail: string;
+  advisorEmail: string;
+  scheduledTime: Date;
+  bookingId: string;
+  linkedinData: LinkedInData | null;
+  enrichedAnswers?: EnrichedAnswers;
   attendeeName: string;
-  bookingDetails: BookingDetails;
-  enrichedAnswers: EnrichedAnswers;
-  hubspotContact?: {
-    id: string;
-    properties: Record<string, string>;
-  } | null;
-  linkedinData?: LinkedInData | null;
-  hubspotContext?: HubspotContext | null;
-  hubspotError?: {
-    message: string;
-  } | null;
+  hostName: string;
+  bookingDetails: {
+    startTime: Date;
+    endTime: Date;
+    meetingLength: number;
+    hostName: string;
+    hostEmail: string;
+    attendeeEmail: string;
+  };
 }
 
-export async function sendConfirmationEmail({
-  to,
-  bookingDetails,
-  enrichedAnswers,
-}: EmailParams) {
+export async function sendConfirmationEmail(params: EmailParams): Promise<EmailResponse> {
   try {
     const { data, error } = await resend.emails.send({
       from: "Scheduling <scheduling@updates.alberttutorial.com>",
-      to,
-      subject: `Meeting Confirmation: ${bookingDetails.hostName}`,
+      to: params.to,
+      subject: `Meeting Confirmation: ${params.bookingDetails.hostName}`,
       html: `
         <h1>Meeting Confirmation</h1>
-        <p>Your meeting has been scheduled with ${bookingDetails.hostName}.</p>
+        <p>Your meeting has been scheduled with ${params.bookingDetails.hostName}.</p>
         
         <h2>Meeting Details:</h2>
         <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
           <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            <li style="margin-bottom: 10px;"><strong>Date:</strong> ${bookingDetails.startTime.toLocaleDateString()}</li>
-            <li style="margin-bottom: 10px;"><strong>Time:</strong> ${bookingDetails.startTime.toLocaleTimeString()} - ${bookingDetails.endTime.toLocaleTimeString()}</li>
-            <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${bookingDetails.meetingLength} minutes</li>
+            <li style="margin-bottom: 10px;"><strong>Date:</strong> ${params.bookingDetails.startTime.toLocaleDateString()}</li>
+            <li style="margin-bottom: 10px;"><strong>Time:</strong> ${params.bookingDetails.startTime.toLocaleTimeString()} - ${params.bookingDetails.endTime.toLocaleTimeString()}</li>
+            <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${params.bookingDetails.meetingLength} minutes</li>
           </ul>
         </div>
 
         <h2>Your Responses:</h2>
         <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-          ${enrichedAnswers.originalAnswers ? `
+          ${params.enrichedAnswers.originalAnswers ? `
             <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-              ${(enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
+              ${(params.enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
                 <li style="margin-bottom: 15px;">
                   <strong>${qa.question}:</strong>
                   <div style="margin: 5px 0;">${qa.answer}</div>
@@ -141,31 +132,31 @@ export async function sendConfirmationEmail({
 
         <h2>Contact Context:</h2>
         <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-          ${enrichedAnswers.linkedinData ? `
+          ${params.enrichedAnswers.linkedinData ? `
             <h3>LinkedIn Profile</h3>
             <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-              ${enrichedAnswers.linkedinData.title ? `
+              ${params.enrichedAnswers.linkedinData.title ? `
                 <li style="margin-bottom: 10px;">
                   <strong>Title:</strong>
-                  <div style="margin: 5px 0;">${enrichedAnswers.linkedinData.title}</div>
+                  <div style="margin: 5px 0;">${params.enrichedAnswers.linkedinData.title}</div>
                 </li>
               ` : ''}
-              ${enrichedAnswers.linkedinData.company ? `
+              ${params.enrichedAnswers.linkedinData.company ? `
                 <li style="margin-bottom: 10px;">
                   <strong>Company:</strong>
-                  <div style="margin: 5px 0;">${enrichedAnswers.linkedinData.company}</div>
+                  <div style="margin: 5px 0;">${params.enrichedAnswers.linkedinData.company}</div>
                 </li>
               ` : ''}
-              ${enrichedAnswers.linkedinData.location ? `
+              ${params.enrichedAnswers.linkedinData.location ? `
                 <li style="margin-bottom: 10px;">
                   <strong>Location:</strong>
-                  <div style="margin: 5px 0;">${enrichedAnswers.linkedinData.location}</div>
+                  <div style="margin: 5px 0;">${params.enrichedAnswers.linkedinData.location}</div>
                 </li>
               ` : ''}
-              ${enrichedAnswers.linkedinData.summary ? `
+              ${params.enrichedAnswers.linkedinData.summary ? `
                 <li style="margin-bottom: 10px;">
                   <strong>Summary:</strong>
-                  <div style="margin: 5px 0;">${enrichedAnswers.linkedinData.summary}</div>
+                  <div style="margin: 5px 0;">${params.enrichedAnswers.linkedinData.summary}</div>
                 </li>
               ` : ''}
             </ul>
@@ -173,7 +164,7 @@ export async function sendConfirmationEmail({
 
           <h3>Contact Details</h3>
           <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            ${Object.entries(enrichedAnswers)
+            ${Object.entries(params.enrichedAnswers)
               .filter(([key, value]) => 
                 key.startsWith('HubSpot') && 
                 value !== undefined && 
@@ -189,8 +180,8 @@ export async function sendConfirmationEmail({
           
           <h3>Recent Notes</h3>
           <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            ${enrichedAnswers.notes && enrichedAnswers.notes.length > 0 ? 
-              enrichedAnswers.notes.map(note => `
+            ${params.enrichedAnswers.notes && params.enrichedAnswers.notes.length > 0 ? 
+              params.enrichedAnswers.notes.map(note => `
                 <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
                   <strong>${new Date(note.timestamp).toLocaleString()}</strong>
                   <div style="margin: 5px 0; white-space: pre-wrap;">${note.body.replace(/<[^>]*>/g, '')}</div>
@@ -202,8 +193,8 @@ export async function sendConfirmationEmail({
 
           <h3>Recent Deals</h3>
           <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            ${enrichedAnswers.deals && enrichedAnswers.deals.length > 0 ? 
-              enrichedAnswers.deals.map(deal => `
+            ${params.enrichedAnswers.deals && params.enrichedAnswers.deals.length > 0 ? 
+              params.enrichedAnswers.deals.map(deal => `
                 <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
                   <strong>${deal.name}</strong>
                   <div style="margin: 5px 0;">Amount: ${deal.amount}</div>
@@ -222,44 +213,37 @@ export async function sendConfirmationEmail({
       throw error;
     }
 
-    return data;
+    if (!data) {
+      throw new Error('No response received from email service');
+    }
+
+    return {
+      id: data.id,
+      from: "Scheduling <scheduling@updates.alberttutorial.com>",
+      to: params.to,
+      subject: `Meeting Confirmation: ${params.bookingDetails.hostName}`
+    };
   } catch (error) {
     console.error('Error sending confirmation email:', error);
     throw error;
   }
 }
 
-export async function sendAdvisorNotificationEmail(
-  attendeeEmail: string,
-  advisorEmail: string,
-  scheduledTime: Date,
-  bookingId: string,
-  linkedInData: LinkedInData | null,
-  enrichedAnswers?: Record<string, any>
-) {
+export async function sendAdvisorNotificationEmail(params: AdvisorNotificationParams): Promise<EmailResponse> {
   console.log('Starting advisor notification email process...');
-  console.log('Initial LinkedIn data:', linkedInData);
-  console.log('Enriched answers:', enrichedAnswers);
+  console.log('Initial LinkedIn data:', params.linkedinData);
+  console.log('Enriched answers:', params.enrichedAnswers);
 
   try {
-    let finalLinkedInData = linkedInData;
-    const attendeeName = enrichedAnswers?.name || 'Attendee';
-    const hostName = enrichedAnswers?.hostName || 'Your host';
-    const bookingDetails = {
-      startTime: scheduledTime,
-      endTime: new Date(scheduledTime.getTime() + (enrichedAnswers?.duration || 30) * 60000),
-      meetingLength: enrichedAnswers?.duration || 30,
-      hostName,
-      hostEmail: advisorEmail,
-      attendeeEmail
-    };
+    let finalLinkedInData = params.linkedinData;
+    const { attendeeName, hostName, bookingDetails } = params;
 
     // If no LinkedIn data is provided but we have an email, try to fetch it
-    if (!finalLinkedInData && attendeeEmail) {
+    if (!finalLinkedInData && params.attendeeEmail) {
       console.log('No LinkedIn data provided, attempting to fetch from LinkedIn...');
       
       // First try to get data from LinkedIn URL if available
-      const linkedinUrl = enrichedAnswers?.linkedinUrl;
+      const linkedinUrl = params.enrichedAnswers?.linkedinUrl;
       if (linkedinUrl) {
         console.log('Found LinkedIn URL in enriched answers:', linkedinUrl);
         try {
@@ -298,7 +282,7 @@ export async function sendAdvisorNotificationEmail(
       } else {
         // Only try domain-based search if we don't have a LinkedIn URL
         console.log('No LinkedIn URL provided, attempting domain-based search...');
-        const domain = attendeeEmail.split('@')[1];
+        const domain = params.attendeeEmail.split('@')[1];
         if (domain && !domain.includes('gmail.com') && !domain.includes('yahoo.com') && !domain.includes('hotmail.com')) {
           try {
             const company = await linkedInService.findCompanyByDomain(domain);
@@ -366,15 +350,15 @@ export async function sendAdvisorNotificationEmail(
           <li style="margin-bottom: 10px;"><strong>Date:</strong> ${bookingDetails.startTime.toLocaleDateString()}</li>
           <li style="margin-bottom: 10px;"><strong>Time:</strong> ${bookingDetails.startTime.toLocaleTimeString()} - ${bookingDetails.endTime.toLocaleTimeString()}</li>
           <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${bookingDetails.meetingLength} minutes</li>
-          <li style="margin-bottom: 10px;"><strong>Attendee Email:</strong> ${attendeeEmail}</li>
+          <li style="margin-bottom: 10px;"><strong>Attendee Email:</strong> ${params.attendeeEmail}</li>
         </ul>
       </div>
 
       <h2>Attendee Responses:</h2>
       <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-        ${enrichedAnswers?.originalAnswers ? `
+        ${params.enrichedAnswers?.originalAnswers ? `
           <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            ${(enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
+            ${(params.enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
               <li style="margin-bottom: 15px;">
                 <strong>${qa.question}:</strong>
                 <div style="margin: 5px 0;">${qa.answer}</div>
@@ -418,7 +402,7 @@ export async function sendAdvisorNotificationEmail(
 
         <h3>Contact Details</h3>
         <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-          ${Object.entries(enrichedAnswers || {})
+          ${Object.entries(params.enrichedAnswers || {})
             .filter(([key, value]) => 
               key.startsWith('HubSpot') && 
               value !== undefined && 
@@ -434,8 +418,8 @@ export async function sendAdvisorNotificationEmail(
         
         <h3>Recent Notes</h3>
         <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-          ${enrichedAnswers?.notes && enrichedAnswers.notes.length > 0 ? 
-            enrichedAnswers.notes.map((note: Note) => `
+          ${params.enrichedAnswers?.notes && params.enrichedAnswers.notes.length > 0 ? 
+            params.enrichedAnswers.notes.map((note: Note) => `
               <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
                 <strong>${new Date(note.timestamp).toLocaleString()}</strong>
                 <div style="margin: 5px 0; white-space: pre-wrap;">${note.body.replace(/<[^>]*>/g, '')}</div>
@@ -447,8 +431,8 @@ export async function sendAdvisorNotificationEmail(
 
         <h3>Recent Deals</h3>
         <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-          ${enrichedAnswers?.deals && enrichedAnswers.deals.length > 0 ? 
-            enrichedAnswers.deals.map((deal: Deal) => `
+          ${params.enrichedAnswers?.deals && params.enrichedAnswers.deals.length > 0 ? 
+            params.enrichedAnswers.deals.map((deal: Deal) => `
               <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
                 <strong>${deal.name}</strong>
                 <div style="margin: 5px 0;">Amount: ${deal.amount}</div>
@@ -472,15 +456,15 @@ export async function sendAdvisorNotificationEmail(
           <li style="margin-bottom: 10px;"><strong>Date:</strong> ${bookingDetails.startTime.toLocaleDateString()}</li>
           <li style="margin-bottom: 10px;"><strong>Time:</strong> ${bookingDetails.startTime.toLocaleTimeString()} - ${bookingDetails.endTime.toLocaleTimeString()}</li>
           <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${bookingDetails.meetingLength} minutes</li>
-          <li style="margin-bottom: 10px;"><strong>Host Email:</strong> ${advisorEmail}</li>
+          <li style="margin-bottom: 10px;"><strong>Host Email:</strong> ${params.advisorEmail}</li>
         </ul>
       </div>
 
       <h2>Your Responses:</h2>
       <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-        ${enrichedAnswers?.originalAnswers ? `
+        ${params.enrichedAnswers?.originalAnswers ? `
           <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-            ${(enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
+            ${(params.enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
               <li style="margin-bottom: 15px;">
                 <strong>${qa.question}:</strong>
                 <div style="margin: 5px 0;">${qa.answer}</div>
@@ -524,7 +508,7 @@ export async function sendAdvisorNotificationEmail(
 
         <h3>Contact Details</h3>
         <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-          ${Object.entries(enrichedAnswers || {})
+          ${Object.entries(params.enrichedAnswers || {})
             .filter(([key, value]) => 
               key.startsWith('HubSpot') && 
               value !== undefined && 
@@ -540,8 +524,8 @@ export async function sendAdvisorNotificationEmail(
         
         <h3>Recent Notes</h3>
         <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-          ${enrichedAnswers?.notes && enrichedAnswers.notes.length > 0 ? 
-            enrichedAnswers.notes.map((note: Note) => `
+          ${params.enrichedAnswers?.notes && params.enrichedAnswers.notes.length > 0 ? 
+            params.enrichedAnswers.notes.map((note: Note) => `
               <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
                 <strong>${new Date(note.timestamp).toLocaleString()}</strong>
                 <div style="margin: 5px 0; white-space: pre-wrap;">${note.body.replace(/<[^>]*>/g, '')}</div>
@@ -553,8 +537,8 @@ export async function sendAdvisorNotificationEmail(
 
         <h3>Recent Deals</h3>
         <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-          ${enrichedAnswers?.deals && enrichedAnswers.deals.length > 0 ? 
-            enrichedAnswers.deals.map((deal: Deal) => `
+          ${params.enrichedAnswers?.deals && params.enrichedAnswers.deals.length > 0 ? 
+            params.enrichedAnswers.deals.map((deal: Deal) => `
               <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
                 <strong>${deal.name}</strong>
                 <div style="margin: 5px 0;">Amount: ${deal.amount}</div>
@@ -570,38 +554,64 @@ export async function sendAdvisorNotificationEmail(
     // Send email to advisor
     const advisorEmailResult = await resend.emails.send({
       from: "Scheduling <scheduling@updates.alberttutorial.com>",
-      to: advisorEmail,
+      to: params.advisorEmail,
       subject: `Meeting Confirmation: ${attendeeName}`,
       html: advisorEmailContent
     });
 
-    if (advisorEmailResult.error) {
-      console.error('Error sending email to advisor:', advisorEmailResult.error);
-      throw advisorEmailResult.error;
-    }
-
-    // Send email to attendee
     const attendeeEmailResult = await resend.emails.send({
       from: "Scheduling <scheduling@updates.alberttutorial.com>",
-      to: attendeeEmail,
+      to: params.attendeeEmail,
       subject: `Meeting Confirmation: ${hostName}`,
       html: attendeeEmailContent
     });
 
-    if (attendeeEmailResult.error) {
-      console.error('Error sending email to attendee:', attendeeEmailResult.error);
-      throw attendeeEmailResult.error;
+    if (!advisorEmailResult || !attendeeEmailResult) {
+      throw new Error('Failed to send one or both emails');
     }
 
-    console.log('Emails sent successfully to both advisor and attendee');
-    return { advisorEmailResult: advisorEmailResult.data, attendeeEmailResult: attendeeEmailResult.data };
-  } catch (error: any) {
+    const response: EmailResponse = {
+      from: "Scheduling <scheduling@updates.alberttutorial.com>",
+      to: params.advisorEmail,
+      subject: `Meeting Confirmation: ${attendeeName}`
+    };
+
+    if (advisorEmailResult.data?.id) {
+      response.id = advisorEmailResult.data.id;
+    }
+
+    return response;
+  } catch (error: unknown) {
     console.error('Error in sendAdvisorNotificationEmail:', {
-      error: error.message,
-      stack: error.stack,
-      attendeeEmail,
-      advisorEmail
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      attendeeEmail: params.attendeeEmail,
+      advisorEmail: params.advisorEmail
     });
     throw error;
   }
+}
+
+export function renderTemplate(template: string, data: EmailTemplateData): string {
+  return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+    const value = data[key.trim()];
+    return value !== undefined ? String(value) : match;
+  });
+}
+
+export function validateEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+export function formatDate(date: Date): string {
+  return date.toLocaleString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    timeZoneName: 'short'
+  });
 } 

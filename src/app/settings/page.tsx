@@ -1,22 +1,31 @@
+import { Metadata } from "next";
 import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
+import Image from "next/image";
 import { authOptions } from "@/lib/auth";
-import ConnectGoogleAccount from "./ConnectGoogleAccount";
 import { prisma } from "@/lib/prisma";
-import type { GoogleAccount, User } from "@prisma/client";
+import type { GoogleAccount, User, HubSpotAccount, SchedulingWindow } from "@prisma/client";
 import HubspotSettings from "./hubspot-settings";
 import SchedulingWindows from "./scheduling-windows";
 import SchedulingLinks from "./scheduling-links";
+import ConnectGoogleAccount from "./ConnectGoogleAccount";
 
-export default async function SettingsPage({
-  searchParams,
-}: {
-  searchParams: { error?: string; success?: string };
-}) {
+type SettingsPageProps = {
+  params: Promise<Record<string, string>>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+};
+
+export const metadata: Metadata = {
+  title: "Settings",
+  description: "Manage your account settings and preferences.",
+};
+
+export default async function SettingsPage({ searchParams }: SettingsPageProps) {
+  const params = await searchParams;
   const session = await getServerSession(authOptions);
 
   if (!session?.user) {
-    redirect("/api/auth/signin");
+    redirect("/auth/signin");
   }
 
   const googleAccounts = await prisma.googleAccount.findMany({
@@ -38,7 +47,10 @@ export default async function SettingsPage({
       hubspotAccount: true,
       schedulingWindows: true,
     },
-  }) as (User & { hubspotAccount: any; schedulingWindows: any[] }) | null;
+  }) as (User & { 
+    hubspotAccount: HubSpotAccount | null; 
+    schedulingWindows: SchedulingWindow[] 
+  }) | null;
 
   if (!user) {
     redirect("/auth/signin");
@@ -64,10 +76,12 @@ export default async function SettingsPage({
                 >
                   <div className="flex items-center">
                     <div className="flex-shrink-0">
-                      <img
+                      <Image
                         className="h-10 w-10 rounded-full"
                         src={`https://www.gravatar.com/avatar/${account.email}?d=mp`}
                         alt=""
+                        width={40}
+                        height={40}
                       />
                     </div>
                     <div className="ml-4">
@@ -107,7 +121,7 @@ export default async function SettingsPage({
         </div>
       </div>
 
-      {searchParams.error && (
+      {params.error && (
         <div className="p-4 bg-red-50 rounded-md">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -116,13 +130,13 @@ export default async function SettingsPage({
               </svg>
             </div>
             <div className="ml-3">
-              <p className="text-sm text-red-700">{searchParams.error}</p>
+              <p className="text-sm text-red-700">{params.error}</p>
             </div>
           </div>
         </div>
       )}
 
-      {searchParams.success && (
+      {params.success && (
         <div className="p-4 bg-green-50 rounded-md">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -131,7 +145,7 @@ export default async function SettingsPage({
               </svg>
             </div>
             <div className="ml-3">
-              <p className="text-sm text-green-700">{searchParams.success}</p>
+              <p className="text-sm text-green-700">{params.success}</p>
             </div>
           </div>
         </div>
@@ -139,7 +153,7 @@ export default async function SettingsPage({
 
       <HubspotSettings 
         isConnected={!!hubspotAccount}
-        hubId={hubspotAccount?.hubId}
+        hubId={hubspotAccount?.hubId ?? null}
       />
 
       <SchedulingWindows initialWindows={user.schedulingWindows} />

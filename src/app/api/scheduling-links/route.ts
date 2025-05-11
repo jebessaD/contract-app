@@ -4,12 +4,17 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { nanoid } from "nanoid";
 
+interface CustomQuestion {
+  question: string;
+  required: boolean;
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const links = await prisma.schedulingLink.findMany({
@@ -36,7 +41,7 @@ export async function POST(request: Request) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const data = await request.json();
@@ -76,7 +81,7 @@ export async function POST(request: Request) {
 
     // Filter out empty questions
     const validQuestions = data.customQuestions.filter(
-      (q: any) => q.question && q.question.trim() !== ""
+      (q: CustomQuestion) => q.question && q.question.trim() !== ""
     );
 
     if (validQuestions.length === 0) {
@@ -161,6 +166,40 @@ export async function POST(request: Request) {
     }
     return NextResponse.json(
       { error: "Failed to create scheduling link", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Link ID is required" },
+        { status: 400 }
+      );
+    }
+
+    await prisma.schedulingLink.delete({
+      where: {
+        id,
+        userId: session.user.id,
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting scheduling link:", error);
+    return NextResponse.json(
+      { error: "Failed to delete scheduling link" },
       { status: 500 }
     );
   }

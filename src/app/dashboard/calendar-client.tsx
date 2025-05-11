@@ -1,23 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 export function CalendarClient() {
   const router = useRouter();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSync, setLastSync] = useState<Date>(new Date());
 
-  // Auto-refresh every 5 minutes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      refreshCalendar();
-    }, 5 * 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const refreshCalendar = async () => {
+  const refreshCalendar = useCallback(async () => {
     setIsRefreshing(true);
     try {
       await router.refresh();
@@ -27,7 +18,17 @@ export function CalendarClient() {
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    refreshCalendar();
+  }, [refreshCalendar]);
+
+  // Auto-refresh every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(refreshCalendar, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [refreshCalendar]);
 
   return (
     <div className="flex items-center space-x-4">

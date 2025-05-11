@@ -103,10 +103,9 @@ export default function SchedulingWindows({
         throw new Error("Failed to save scheduling windows");
       }
 
-      const result = await response.json();
       toast.success("Scheduling windows saved successfully");
-    } catch (error) {
-      console.error("Error saving scheduling windows:", error);
+    } catch (err) {
+      console.error("Error saving scheduling windows:", err);
       toast.error("Failed to save scheduling windows");
     } finally {
       setIsSubmitting(false);

@@ -19,7 +19,40 @@ interface LinkedInProfile {
   }>;
 }
 
-export async function mockLinkedInScrape(linkedinUrl: string): Promise<LinkedInProfile> {
+export const linkedInService = {
+  async getEmployeeProfile() {
+    return {
+      full_name: "John Doe",
+      headline: "Software Engineer",
+      summary: "Experienced software engineer with a passion for building great products.",
+      experiences: [
+        {
+          title: "Software Engineer",
+          company: "Tech Corp",
+          starts_at: { year: 2020 },
+          ends_at: null,
+          description: "Building amazing software"
+        }
+      ],
+      skills: [
+        { name: "JavaScript" },
+        { name: "TypeScript" },
+        { name: "React" }
+      ],
+      education: [
+        {
+          school: "University of Technology",
+          degree_name: "Bachelor of Science",
+          field_of_study: "Computer Science",
+          starts_at: { year: 2016 },
+          ends_at: { year: 2020 }
+        }
+      ]
+    };
+  }
+};
+
+export async function mockLinkedInScrape(): Promise<LinkedInProfile> {
   // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, 1000));
 

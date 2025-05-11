@@ -5,7 +5,6 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const linkId = searchParams.get("linkId");
-    const date = searchParams.get("date");
 
     if (!linkId) {
       return NextResponse.json(

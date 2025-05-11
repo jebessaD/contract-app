@@ -48,10 +48,10 @@ class LinkedInService {
       const data = await response.json();
       console.log('Proxycurl API response data:', JSON.stringify(data, null, 2));
       return data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error in Proxycurl API call:', {
-        error: error.message,
-        stack: error.stack,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
         url: url
       });
       throw error;
@@ -99,10 +99,10 @@ class LinkedInService {
       });
 
       return company;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to find company by domain:', {
-        error: error.message,
-        stack: error.stack,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
         domain: domain
       });
       throw error;
@@ -144,10 +144,10 @@ class LinkedInService {
       });
 
       return profile;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fetch employee profile:', {
-        error: error.message,
-        stack: error.stack,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
         url: linkedinUrl
       });
       throw error;
@@ -191,10 +191,10 @@ class LinkedInService {
       });
 
       return employees;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to search employees by title:', {
-        error: error.message,
-        stack: error.stack,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
         companyUrl,
         jobTitle
       });
@@ -207,4 +207,4 @@ class LinkedInService {
 export const linkedInService = new LinkedInService();
 
 // Export class for testing purposes
-export { LinkedInService }; 
+export { LinkedInService };

@@ -1,17 +1,42 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { LinkedInEmployeeProfile } from '@/lib/linkedin.d';
 
 interface ContactInfoProps {
   email: string;
-  onContactFound?: (contact: any) => void;
+  onContactFound?: (contact: ContactResponse) => void;
 }
 
 interface ContactResponse {
   source: 'hubspot' | 'linkedin';
-  contact: any;
+  contact: ContactData;
   error?: string;
+  context?: string;
+}
+
+interface Experience {
+  title: string;
+  company: string;
+  starts_at?: { year: number; month?: number };
+  ends_at?: { year: number; month?: number } | null;
+}
+
+interface ContactData {
+  firstName?: string;
+  lastName?: string;
+  title?: string;
+  company?: string;
+  location?: string;
+  bio?: string;
+  skills?: string[];
+  experience?: Experience[];
+  properties?: {
+    firstname?: string;
+    lastname?: string;
+    email?: string;
+    company?: string;
+    notes?: string;
+  };
   context?: string;
 }
 
@@ -91,16 +116,16 @@ export default function ContactInfo({ email, onContactFound }: ContactInfoProps)
         // Hubspot Contact Display
         <div className="space-y-4">
           <div>
-            <p className="font-medium">{contactData.contact.properties.firstname} {contactData.contact.properties.lastname}</p>
-            <p className="text-gray-600">{contactData.contact.properties.email}</p>
-            {contactData.contact.properties.company && (
-              <p className="text-gray-600">{contactData.contact.properties.company}</p>
+            <p className="font-medium">{contactData.contact.properties?.firstname} {contactData.contact.properties?.lastname}</p>
+            <p className="text-gray-600">{contactData.contact.properties?.email}</p>
+            {contactData.contact.properties?.company && (
+              <p className="text-gray-600">{contactData.contact.properties?.company}</p>
             )}
           </div>
-          {contactData.contact.properties.notes && (
+          {contactData.contact.properties?.notes && (
             <div>
               <h3 className="font-medium">Notes</h3>
-              <p className="text-gray-600">{contactData.contact.properties.notes}</p>
+              <p className="text-gray-600">{contactData.contact.properties?.notes}</p>
             </div>
           )}
         </div>
@@ -143,7 +168,7 @@ export default function ContactInfo({ email, onContactFound }: ContactInfoProps)
             <div>
               <h3 className="font-medium">Experience</h3>
               <div className="space-y-2 mt-2">
-                {contactData.contact.experience.map((exp: any, index: number) => (
+                {contactData.contact.experience.map((exp: Experience, index: number) => (
                   <div key={index} className="text-sm">
                     <p className="font-medium">{exp.title}</p>
                     <p className="text-gray-600">{exp.company}</p>

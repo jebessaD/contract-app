@@ -52,15 +52,15 @@ const weekdayMap = {
   "Sunday": "SUNDAY"
 };
 
-const shortWeekdayMap = {
-  "Monday": "Mon",
-  "Tuesday": "Tue",
-  "Wednesday": "Wed",
-  "Thursday": "Thu",
-  "Friday": "Fri",
-  "Saturday": "Sat",
-  "Sunday": "Sun"
-};
+// const shortWeekdayMap = {
+//   "Monday": "Mon",
+//   "Tuesday": "Tue",
+//   "Wednesday": "Wed",
+//   "Thursday": "Thu",
+//   "Friday": "Fri",
+//   "Saturday": "Sat",
+//   "Sunday": "Sun"
+// };
 
 interface TimeSlot {
   date: string;
@@ -210,6 +210,8 @@ export default function BookingForm({ link, advisor }: BookingFormProps) {
           matchingWindows.forEach(window => {
             const [startHour, startMinute] = window.startTime.split(':').map(Number);
             const [endHour, endMinute] = window.endTime.split(':').map(Number);
+
+            console.log("startMinute", startMinute, endMinute);
             
             // Generate slots for this window
             for (let hour = startHour; hour < endHour; hour++) {

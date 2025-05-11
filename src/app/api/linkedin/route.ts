@@ -11,14 +11,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { email, question, answer } = await request.json();
-    if (!email) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    const data = await request.json();
+    const { linkedinUrl } = data;
+
+    if (!linkedinUrl) {
+      return NextResponse.json(
+        { error: "LinkedIn URL is required" },
+        { status: 400 }
+      );
     }
 
     // First try to find contact in Hubspot
-    const { client: hubspotClient, accessToken } = await getHubspotClient(session.user.id);
-    const hubspotContact = await searchHubspotContact(email, accessToken);
+    const { accessToken } = await getHubspotClient(session.user.id);
+    const hubspotContact = await searchHubspotContact(linkedinUrl, accessToken);
 
     if (hubspotContact) {
       return NextResponse.json({
@@ -28,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     // If no Hubspot contact found, try to find LinkedIn profile
-    const domain = email.split('@')[1];
+    const domain = linkedinUrl.split('@')[1];
     if (!domain) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
     }

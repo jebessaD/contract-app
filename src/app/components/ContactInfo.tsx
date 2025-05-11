@@ -1,20 +1,46 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { LinkedInEmployeeProfile } from '@/lib/linkedin.d';
 
 interface ContactInfoProps {
   email: string;
-  onContactFound?: (contact: any) => void;
+  onContactFound?: (contact: ContactResponse) => void;
 }
 
 interface ContactResponse {
   source: 'hubspot' | 'linkedin';
-  contact: any;
+  contact: ContactData;
   error?: string;
 }
 
-export default function ContactInfo({ email, onContactFound }: ContactInfoProps) {
+interface ContactData {
+  name: string;
+  email: string;
+  phone?: string;
+  company?: string;
+  notes?: string;
+  properties?: {
+    firstname?: string;
+    lastname?: string;
+    email?: string;
+    company?: string;
+    notes?: string;
+  };
+  firstName?: string;
+  lastName?: string;
+  title?: string;
+  bio?: string;
+  skills?: string[];
+  experience?: Array<{
+    title: string;
+    company: string;
+    starts_at?: { year: number; month?: number };
+    ends_at?: { year: number; month?: number } | null;
+    description?: string;
+  }>;
+}
+
+export function ContactInfo({ email, onContactFound }: ContactInfoProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contactData, setContactData] = useState<ContactResponse | null>(null);
@@ -90,13 +116,13 @@ export default function ContactInfo({ email, onContactFound }: ContactInfoProps)
         // Hubspot Contact Display
         <div className="space-y-4">
           <div>
-            <p className="font-medium">{contactData.contact.properties.firstname} {contactData.contact.properties.lastname}</p>
-            <p className="text-gray-600">{contactData.contact.properties.email}</p>
-            {contactData.contact.properties.company && (
+            <p className="font-medium">{contactData.contact.properties?.firstname} {contactData.contact.properties?.lastname}</p>
+            <p className="text-gray-600">{contactData.contact.properties?.email}</p>
+            {contactData.contact.properties?.company && (
               <p className="text-gray-600">{contactData.contact.properties.company}</p>
             )}
           </div>
-          {contactData.contact.properties.notes && (
+          {contactData.contact.properties?.notes && (
             <div>
               <h3 className="font-medium">Notes</h3>
               <p className="text-gray-600">{contactData.contact.properties.notes}</p>
@@ -110,9 +136,6 @@ export default function ContactInfo({ email, onContactFound }: ContactInfoProps)
             <p className="font-medium">{contactData.contact.firstName} {contactData.contact.lastName}</p>
             <p className="text-gray-600">{contactData.contact.title}</p>
             <p className="text-gray-600">{contactData.contact.company}</p>
-            {contactData.contact.location && (
-              <p className="text-gray-600">{contactData.contact.location}</p>
-            )}
           </div>
           
           {contactData.contact.bio && (
@@ -126,7 +149,7 @@ export default function ContactInfo({ email, onContactFound }: ContactInfoProps)
             <div>
               <h3 className="font-medium">Skills</h3>
               <div className="flex flex-wrap gap-2 mt-2">
-                {contactData.contact.skills.map((skill: string, index: number) => (
+                {contactData.contact.skills.map((skill, index) => (
                   <span
                     key={index}
                     className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-sm"
@@ -142,7 +165,7 @@ export default function ContactInfo({ email, onContactFound }: ContactInfoProps)
             <div>
               <h3 className="font-medium">Experience</h3>
               <div className="space-y-2 mt-2">
-                {contactData.contact.experience.map((exp: any, index: number) => (
+                {contactData.contact.experience.map((exp, index) => (
                   <div key={index} className="text-sm">
                     <p className="font-medium">{exp.title}</p>
                     <p className="text-gray-600">{exp.company}</p>

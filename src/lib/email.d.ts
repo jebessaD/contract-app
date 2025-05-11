@@ -41,5 +41,35 @@ export interface AdvisorNotificationParams {
   } | null;
 }
 
-export function sendConfirmationEmail(params: EmailParams): Promise<any>;
-export function sendAdvisorNotificationEmail(params: AdvisorNotificationParams): Promise<any>; 
+export interface EmailConfig {
+  from: string;
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+  attachments?: Array<{
+    filename: string;
+    content: string | Buffer;
+    contentType?: string;
+  }>;
+}
+
+export interface EmailResponse {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}
+
+export interface EmailTemplate {
+  name: string;
+  subject: string;
+  html: string;
+  text?: string;
+}
+
+export interface EmailContext {
+  [key: string]: string | number | boolean | object | undefined;
+}
+
+export function sendConfirmationEmail(params: EmailParams): Promise<EmailResponse>;
+export function sendAdvisorNotificationEmail(params: AdvisorNotificationParams): Promise<EmailResponse>; 

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { searchHubspotContact, getHubspotClient } from "@/lib/hubspot";
 import { linkedInService } from "@/lib/linkedin";
 import { augmentAnswers } from "@/lib/ai-augment";
-import { sendConfirmationEmail, sendAdvisorNotificationEmail } from "@/lib/email";
+import { sendAdvisorNotificationEmail } from "@/lib/email";
 import type { LinkedInData } from "@/lib/linkedin.d";
 import { Prisma } from "@prisma/client";
 
@@ -210,13 +210,13 @@ export async function POST(req: Request) {
         }
       });
       // Send notification email to both advisor and attendee
-      await sendAdvisorNotificationEmail(
-        email,
-        booking.schedulingLink.user.email || '',
-        new Date(booking.scheduledTime),
+      await sendAdvisorNotificationEmail({
+        attendeeEmail: email,
+        advisorEmail: booking.schedulingLink.user.email || '',
+        scheduledTime: new Date(booking.scheduledTime),
         bookingId,
         linkedinData,
-        {
+        enrichedAnswers: {
           ...enrichedAnswers,
           originalAnswers: answers,
           notes: processedNotes,
@@ -226,8 +226,20 @@ export async function POST(req: Request) {
             : linkedinData?.name || email,
           duration: `${booking.schedulingLink.meetingLength} minutes`,
           hostName: booking.schedulingLink.user.name || 'Your host'
+        },
+        attendeeName: hubspotContact?.properties.firstname 
+          ? `${hubspotContact.properties.firstname} ${hubspotContact.properties.lastname || ''}`
+          : linkedinData?.name || email,
+        hostName: booking.schedulingLink.user.name || 'Your host',
+        bookingDetails: {
+          startTime: new Date(booking.scheduledTime),
+          endTime: new Date(booking.scheduledTime.getTime() + booking.schedulingLink.meetingLength * 60000),
+          meetingLength: booking.schedulingLink.meetingLength,
+          hostName: booking.schedulingLink.user.name || 'Your host',
+          hostEmail: booking.schedulingLink.user.email || '',
+          attendeeEmail: email
         }
-      );
+      });
       console.log("Sent notification emails to both advisor and attendee");
     } catch (error) {
       console.error("Error sending notification emails:", error);

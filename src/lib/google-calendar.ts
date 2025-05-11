@@ -86,25 +86,28 @@ export async function getCalendarEvents(userId: string) {
   } catch (error) {
     console.error("Error fetching calendar data:", error);
     
-    if (error instanceof Error && error.message.includes("API has not been used") || error.message.includes("API is disabled")) {
+    if (
+      error instanceof Error && 
+      (error.message.includes("API has not been used") || error.message.includes("API is disabled"))
+    ) {
       console.log("Google Calendar API needs to be enabled. Please visit the Google Cloud Console to enable it.");
       return { events: [], timeSlots: [] };
     }
 
     if (error instanceof Error && error.message.includes("invalid_grant")) {
       try {
-        const { tokens } = await oauth2Client.refreshAccessToken();
+        const response = await oauth2Client.refreshAccessToken();
         
         await prisma.googleAccount.update({
           where: { id: googleAccount.id },
           data: {
-            accessToken: tokens.access_token!,
-            refreshToken: tokens.refresh_token || googleAccount.refreshToken,
-            expiryDate: new Date(tokens.expiry_date!),
+            accessToken: response.credentials.access_token!,
+            refreshToken: response.credentials.refresh_token || googleAccount.refreshToken,
+            expiryDate: new Date(response.credentials.expiry_date!),
           },
         });
 
-        oauth2Client.setCredentials(tokens);
+        oauth2Client.setCredentials(response.credentials);
         return getCalendarEvents(userId); // Retry the request
       } catch (refreshError) {
         console.error("Error refreshing token:", refreshError);

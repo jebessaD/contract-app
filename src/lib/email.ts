@@ -10,8 +10,28 @@ interface BookingDetails {
   hostEmail: string;
 }
 
+interface Note {
+  body: string;
+  timestamp: string;
+}
+
+interface Deal {
+  name: string;
+  amount: string;
+  stage: string;
+}
+
+interface BookingAnswers {
+  question: string;
+  answer: string;
+  required: boolean;
+}
+
 interface EnrichedAnswers {
-  [key: string]: string;
+  [key: string]: string | Note[] | Deal[] | undefined | BookingAnswers[];
+  notes?: Note[];
+  deals?: Deal[];
+  originalAnswers?: BookingAnswers[];
 }
 
 interface EmailParams {
@@ -80,18 +100,75 @@ export async function sendConfirmationEmail({
       html: `
         <h1>Meeting Confirmation</h1>
         <p>Your meeting has been scheduled with ${bookingDetails.hostName}.</p>
+        
         <h2>Meeting Details:</h2>
-        <ul>
-          <li>Date: ${bookingDetails.startTime.toLocaleDateString()}</li>
-          <li>Time: ${bookingDetails.startTime.toLocaleTimeString()} - ${bookingDetails.endTime.toLocaleTimeString()}</li>
-          <li>Duration: ${bookingDetails.meetingLength} minutes</li>
-        </ul>
-        <h2>Your Information:</h2>
-        <ul>
-          ${Object.entries(enrichedAnswers)
-            .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
-            .join('')}
-        </ul>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            <li style="margin-bottom: 10px;"><strong>Date:</strong> ${bookingDetails.startTime.toLocaleDateString()}</li>
+            <li style="margin-bottom: 10px;"><strong>Time:</strong> ${bookingDetails.startTime.toLocaleTimeString()} - ${bookingDetails.endTime.toLocaleTimeString()}</li>
+            <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${bookingDetails.meetingLength} minutes</li>
+          </ul>
+        </div>
+
+        <h2>Your Responses:</h2>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          ${enrichedAnswers.originalAnswers ? `
+            <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+              ${(enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
+                <li style="margin-bottom: 15px;">
+                  <strong>${qa.question}:</strong>
+                  <div style="margin: 5px 0;">${qa.answer}</div>
+                </li>
+              `).join('')}
+            </ul>
+          ` : '<p>No responses provided</p>'}
+        </div>
+
+        <h2>Contact Context:</h2>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          <h3>Contact Details</h3>
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${Object.entries(enrichedAnswers)
+              .filter(([key, value]) => 
+                key.startsWith('HubSpot') && 
+                value !== undefined && 
+                value !== null &&
+                typeof value === 'string')
+              .map(([key, value]) => `
+                <li style="margin-bottom: 10px;">
+                  <strong>${key.replace('HubSpot', '')}:</strong>
+                  <div style="margin: 5px 0;">${value}</div>
+                </li>
+              `).join('')}
+          </ul>
+          
+          <h3>Recent Notes</h3>
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${enrichedAnswers.notes && enrichedAnswers.notes.length > 0 ? 
+              enrichedAnswers.notes.map(note => `
+                <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
+                  <strong>${new Date(note.timestamp).toLocaleString()}</strong>
+                  <div style="margin: 5px 0;">${note.body}</div>
+                </li>
+              `).join('') : 
+              '<li>No recent notes</li>'
+            }
+          </ul>
+
+          <h3>Recent Deals</h3>
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${enrichedAnswers.deals && enrichedAnswers.deals.length > 0 ? 
+              enrichedAnswers.deals.map(deal => `
+                <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
+                  <strong>${deal.name}</strong>
+                  <div style="margin: 5px 0;">Amount: ${deal.amount}</div>
+                  <div style="margin: 5px 0;">Stage: ${deal.stage}</div>
+                </li>
+              `).join('') : 
+              '<li>No recent deals</li>'
+            }
+          </ul>
+        </div>
       `,
     });
 
@@ -128,22 +205,31 @@ export async function sendAdvisorNotificationEmail({
         <p>You have a new meeting scheduled with ${attendeeName} (${attendeeEmail}).</p>
         
         <h2>Meeting Details:</h2>
-        <ul>
-          <li>Date: ${bookingDetails.startTime.toLocaleDateString()}</li>
-          <li>Time: ${bookingDetails.startTime.toLocaleTimeString()} - ${bookingDetails.endTime.toLocaleTimeString()}</li>
-          <li>Duration: ${bookingDetails.meetingLength} minutes</li>
-        </ul>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            <li style="margin-bottom: 10px;"><strong>Date:</strong> ${bookingDetails.startTime.toLocaleDateString()}</li>
+            <li style="margin-bottom: 10px;"><strong>Time:</strong> ${bookingDetails.startTime.toLocaleTimeString()} - ${bookingDetails.endTime.toLocaleTimeString()}</li>
+            <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${bookingDetails.meetingLength} minutes</li>
+          </ul>
+        </div>
 
-        <h2>Attendee Information:</h2>
-        <ul>
-          ${Object.entries(enrichedAnswers)
-            .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
-            .join('')}
-        </ul>
+        <h2>Attendee Responses:</h2>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          ${enrichedAnswers.originalAnswers ? `
+            <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+              ${(enrichedAnswers.originalAnswers as BookingAnswers[]).map(qa => `
+                <li style="margin-bottom: 15px;">
+                  <strong>${qa.question}:</strong>
+                  <div style="margin: 5px 0;">${qa.answer}</div>
+                </li>
+              `).join('')}
+            </ul>
+          ` : '<p>No responses provided</p>'}
+        </div>
 
         ${hubspotError ? `
-        <div style="background-color: #fff3cd; padding: 10px; margin: 10px 0; border: 1px solid #ffeeba; border-radius: 4px;">
-          <h3>HubSpot Integration Warning</h3>
+        <div style="background-color: #fff3cd; padding: 15px; margin: 15px 0; border: 1px solid #ffeeba; border-radius: 5px;">
+          <h3>⚠️ HubSpot Integration Warning</h3>
           <p>Could not create/update HubSpot contact: ${hubspotError.message}</p>
           <p>The booking is confirmed, but you may want to manually create the contact in HubSpot.</p>
         </div>
@@ -151,55 +237,81 @@ export async function sendAdvisorNotificationEmail({
 
         ${hubspotContact ? `
         <h2>HubSpot Contact Information:</h2>
-        <ul>
-          ${Object.entries(hubspotContact.properties)
-            .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
-            .join('')}
-        </ul>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${Object.entries(hubspotContact.properties)
+              .filter(([key, value]) => 
+                value !== undefined && 
+                value !== null && 
+                typeof value !== 'object')
+              .map(([key, value]) => `
+                <li style="margin-bottom: 10px;">
+                  <strong>${key}:</strong>
+                  <div style="margin: 5px 0;">${value}</div>
+                </li>
+              `).join('')}
+          </ul>
+        </div>
         ` : ''}
 
         ${hubspotContext ? `
         <h2>HubSpot Context:</h2>
-        <h3>Recent Notes:</h3>
-        <ul>
-          ${hubspotContext.recentNotes.map(note => `
-            <li>
-              <strong>${note.timestamp.toLocaleDateString()}:</strong>
-              <p>${note.body}</p>
-            </li>
-          `).join('')}
-        </ul>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          <h3>Recent Notes:</h3>
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${hubspotContext.recentNotes.length > 0 ? 
+              hubspotContext.recentNotes.map(note => `
+                <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
+                  <strong>${note.timestamp.toLocaleDateString()}</strong>
+                  <div style="margin: 5px 0;">${note.body}</div>
+                </li>
+              `).join('') :
+              '<li>No recent notes</li>'
+            }
+          </ul>
 
-        <h3>Recent Deals:</h3>
-        <ul>
-          ${hubspotContext.recentDeals.map(deal => `
-            <li>
-              <strong>${deal.name}</strong>
-              <p>Amount: ${deal.amount}</p>
-              <p>Stage: ${deal.stage}</p>
-            </li>
-          `).join('')}
-        </ul>
+          <h3>Recent Deals:</h3>
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${hubspotContext.recentDeals.length > 0 ?
+              hubspotContext.recentDeals.map(deal => `
+                <li style="margin-bottom: 15px; border-left: 3px solid #dee2e6; padding-left: 10px;">
+                  <strong>${deal.name}</strong>
+                  <div style="margin: 5px 0;">Amount: ${deal.amount}</div>
+                  <div style="margin: 5px 0;">Stage: ${deal.stage}</div>
+                </li>
+              `).join('') :
+              '<li>No recent deals</li>'
+            }
+          </ul>
+        </div>
         ` : ''}
 
         ${linkedinData ? `
         <h2>LinkedIn Information:</h2>
-        <ul>
-          ${linkedinData.name ? `<li><strong>Name:</strong> ${linkedinData.name}</li>` : ''}
-          ${linkedinData.title ? `<li><strong>Title:</strong> ${linkedinData.title}</li>` : ''}
-          ${linkedinData.company ? `<li><strong>Company:</strong> ${linkedinData.company}</li>` : ''}
-          ${linkedinData.location ? `<li><strong>Location:</strong> ${linkedinData.location}</li>` : ''}
-          ${linkedinData.summary ? `<li><strong>Summary:</strong> ${linkedinData.summary}</li>` : ''}
-          ${linkedinData.experience && linkedinData.experience.length > 0 ? `
-            <li><strong>Experience:</strong>
-              <ul>
-                ${linkedinData.experience.map(exp => `
-                  <li>${exp.title} at ${exp.company} (${exp.duration})</li>
-                `).join('')}
-              </ul>
-            </li>
-          ` : ''}
-        </ul>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          <ul style="list-style-type: none; padding-left: 0; margin: 0;">
+            ${linkedinData.name ? `<li style="margin-bottom: 10px;"><strong>Name:</strong> ${linkedinData.name}</li>` : ''}
+            ${linkedinData.title ? `<li style="margin-bottom: 10px;"><strong>Title:</strong> ${linkedinData.title}</li>` : ''}
+            ${linkedinData.company ? `<li style="margin-bottom: 10px;"><strong>Company:</strong> ${linkedinData.company}</li>` : ''}
+            ${linkedinData.location ? `<li style="margin-bottom: 10px;"><strong>Location:</strong> ${linkedinData.location}</li>` : ''}
+            ${linkedinData.summary ? `
+              <li style="margin: 10px 0;">
+                <strong>Summary:</strong>
+                <div style="margin: 5px 0;">${linkedinData.summary}</div>
+              </li>
+            ` : ''}
+            ${linkedinData.experience && linkedinData.experience.length > 0 ? `
+              <li style="margin: 10px 0;">
+                <strong>Experience:</strong>
+                <ul style="margin: 5px 0; padding-left: 20px;">
+                  ${linkedinData.experience.map(exp => `
+                    <li style="margin: 5px 0;">${exp.title} at ${exp.company} (${exp.duration})</li>
+                  `).join('')}
+                </ul>
+              </li>
+            ` : ''}
+          </ul>
+        </div>
         ` : ''}
       `,
     });

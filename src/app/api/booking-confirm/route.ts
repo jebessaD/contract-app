@@ -14,11 +14,24 @@ interface BookingAnswers {
   required: boolean;
 }
 
+interface Note {
+  body: string;
+  timestamp: string;
+}
+
+interface Deal {
+  name: string;
+  amount: string;
+  stage: string;
+}
+
 type EnrichedBookingData = {
   originalAnswers: BookingAnswers[];
   enrichedAnswers: Record<string, string>;
   hubspotContactId?: string;
   linkedinData?: string;
+  notes?: Note[];
+  deals?: Deal[];
 } & Record<string, unknown>;
 
 export async function POST(req: Request) {
@@ -92,6 +105,18 @@ export async function POST(req: Request) {
     const startTime = new Date(booking.scheduledTime);
     const endTime = new Date(startTime.getTime() + booking.schedulingLink.meetingLength * 60000);
 
+    // Process HubSpot notes and deals
+    const processedNotes: Note[] = hubspotContact?.notes?.map(note => ({
+      body: note.body || '',
+      timestamp: note.timestamp || new Date().toISOString()
+    })) || [];
+
+    const processedDeals: Deal[] = hubspotContact?.deals?.map(deal => ({
+      name: deal.name || 'Unnamed Deal',
+      amount: deal.amount || '0',
+      stage: deal.stage || 'Unknown'
+    })) || [];
+
     try {
       // Send confirmation email to attendee
       await sendConfirmationEmail({
@@ -103,7 +128,12 @@ export async function POST(req: Request) {
           hostName: booking.schedulingLink.user.name || "Your host",
           hostEmail: booking.schedulingLink.user.email || "",
         },
-        enrichedAnswers,
+        enrichedAnswers: {
+          ...enrichedAnswers,
+          originalAnswers: answers,
+          notes: processedNotes,
+          deals: processedDeals
+        },
       });
       console.log("Sent confirmation email to attendee");
     } catch (error) {
@@ -126,7 +156,12 @@ export async function POST(req: Request) {
           hostName: booking.schedulingLink.user.name || "Your host",
           hostEmail: booking.schedulingLink.user.email || "",
         },
-        enrichedAnswers,
+        enrichedAnswers: {
+          ...enrichedAnswers,
+          originalAnswers: answers,
+          notes: processedNotes,
+          deals: processedDeals
+        },
         hubspotContact: hubspotContact ? {
           id: hubspotContact.id,
           properties: Object.fromEntries(
@@ -135,6 +170,20 @@ export async function POST(req: Request) {
           ) as Record<string, string>
         } : null,
         linkedinData,
+        hubspotContext: hubspotContact ? {
+          contact: {
+            email: hubspotContact.properties.email,
+            firstname: hubspotContact.properties.firstname,
+            lastname: hubspotContact.properties.lastname,
+            company: hubspotContact.properties.company,
+            lifecyclestage: hubspotContact.properties.lifecyclestage,
+          },
+          recentNotes: processedNotes.map(note => ({
+            body: note.body,
+            timestamp: new Date(note.timestamp)
+          })),
+          recentDeals: processedDeals
+        } : null,
       });
       console.log("Sent notification email to advisor");
     } catch (error) {
@@ -148,6 +197,8 @@ export async function POST(req: Request) {
       enrichedAnswers,
       hubspotContactId: hubspotContact?.id,
       linkedinData: linkedinData ? JSON.stringify(linkedinData) : undefined,
+      notes: processedNotes,
+      deals: processedDeals
     };
 
     await prisma.booking.update({

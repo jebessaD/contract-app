@@ -7,6 +7,7 @@ export async function getUserBookings(userId: string) {
     },
     include: {
       schedulingLink: true,
+      augmentedAnswersDetails: true
     },
     orderBy: {
       scheduledTime: 'asc',

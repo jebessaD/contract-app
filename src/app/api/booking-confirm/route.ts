@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { searchHubspotContact, getHubspotClient } from "@/lib/hubspot";
 import { linkedInService } from "@/lib/linkedin";
 import { augmentAnswers } from "@/lib/ai-augment";
+import { augmentBookingAnswers } from "@/lib/booking-augment";
 import { sendAdvisorNotificationEmail } from "@/lib/email";
 import type { LinkedInData } from "@/lib/linkedin.d";
 import { Prisma } from "@prisma/client";
@@ -33,6 +34,11 @@ type EnrichedBookingData = {
   linkedinData?: string;
   notes?: Note[];
   deals?: Deal[];
+  augmentedAnswers: {
+    originalAnswers: BookingAnswers[];
+    augmentedAnswers: Record<string, string>;
+    context: Record<string, unknown>;
+  };
 } & Record<string, unknown>;
 
 export async function POST(req: Request) {
@@ -169,9 +175,58 @@ export async function POST(req: Request) {
     console.log("LinkedIn data:", linkedinData ? "found" : "not found");
 
     // Augment answers with AI using context
-    const enrichedAnswers = await augmentAnswers(answers, {
-      hubspotContact,
-      linkedinData,
+    const answersRecord = answers.reduce((acc: Record<string, string>, { question, answer }: { question: string; answer: string }) => {
+      acc[question] = answer;
+      return acc;
+    }, {});
+
+    // Ensure HubSpot contact matches the expected interface
+    const normalizedHubspotContact = hubspotContact ? {
+      id: hubspotContact.id,
+      properties: {
+        email: hubspotContact.properties.email,
+        firstname: hubspotContact.properties.firstname,
+        lastname: hubspotContact.properties.lastname,
+        company: hubspotContact.properties.company,
+        phone: hubspotContact.properties.phone,
+        linkedin_url: hubspotContact.properties.linkedin_url
+      },
+      notes: hubspotContact.notes?.map(note => ({
+        body: note.body || '',
+        timestamp: note.timestamp || new Date().toISOString()
+      })),
+      deals: hubspotContact.deals?.map(deal => ({
+        name: deal.name || '',
+        amount: deal.amount || '',
+        stage: deal.stage || ''
+      }))
+    } : null;
+
+    // Ensure LinkedIn data matches the expected interface
+    const normalizedLinkedinData = linkedinData ? {
+      name: linkedinData.name,
+      title: linkedinData.title,
+      company: linkedinData.company,
+      location: linkedinData.location,
+      summary: linkedinData.summary,
+      experience: linkedinData.experience.map(exp => ({
+        title: exp.title,
+        company: exp.company,
+        duration: exp.duration,
+        description: exp.description
+      })),
+      skills: linkedinData.skills,
+      education: linkedinData.education?.map(edu => ({
+        school: edu.school,
+        degree_name: edu.degree_name,
+        field_of_study: edu.field_of_study,
+        duration: edu.duration || 'Present'
+      }))
+    } : null;
+
+    const enrichedAnswers = await augmentAnswers(answersRecord, {
+      hubspotContact: normalizedHubspotContact,
+      linkedinData: normalizedLinkedinData,
     });
     console.log("Enriched answers:", Object.keys(enrichedAnswers).length);
 
@@ -246,23 +301,66 @@ export async function POST(req: Request) {
       throw error;
     }
 
-    // Update booking with enriched data
-    const updatedAnswers: EnrichedBookingData = {
-      originalAnswers: (booking.answers as unknown as BookingAnswers[]),
-      enrichedAnswers,
-      hubspotContactId: hubspotContact?.id,
-      linkedinData: linkedinData ? JSON.stringify(linkedinData) : undefined,
-      notes: processedNotes,
-      deals: processedDeals
+    // Get HubSpot access token
+    const { accessToken } = await getHubspotClient(booking.schedulingLink.user.id);
+
+    // Augment answers using OpenAI with context
+    console.log("Starting OpenAI augmentation with:", {
+      answersCount: answers.length,
+      email,
+      linkedinUrl
+    });
+
+    const augmentedAnswersDetails = await augmentBookingAnswers(
+      answers,
+      email,
+      linkedinUrl,
+      accessToken
+    );
+
+    console.log("Received augmented answers:", {
+      count: augmentedAnswersDetails.length,
+      sample: augmentedAnswersDetails[0]
+    });
+
+    // Convert augmented answers to the format we need
+    const finalEnrichedAnswers = {
+      ...enrichedAnswers,
+      ...augmentedAnswersDetails.reduce((acc: Record<string, string>, { question, augmentedAnswer }) => {
+        acc[`AI Enhanced: ${question}`] = augmentedAnswer;
+        return acc;
+      }, {})
     };
 
-    await prisma.booking.update({
+    console.log("Final enriched answers:", {
+      totalKeys: Object.keys(finalEnrichedAnswers).length,
+      sampleKeys: Object.keys(finalEnrichedAnswers).slice(0, 3)
+    });
+
+    // Save to database
+    const savedBooking = await prisma.booking.update({
       where: { id: bookingId },
       data: {
-        answers: updatedAnswers as unknown as Prisma.InputJsonValue,
+        augmentedAnswersDetails: {
+          create: {
+            originalAnswer: JSON.stringify(answers),
+            augmentedAnswer: JSON.stringify(augmentedAnswersDetails.map(a => ({
+              question: a.question,
+              answer: a.augmentedAnswer
+            }))),
+            context: {
+              hubspot: null,
+              linkedin: null
+            }
+          }
+        }
       },
+      include: {
+        augmentedAnswersDetails: true
+      }
     });
-    console.log("Updated booking with enriched data");
+
+
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -75,6 +75,7 @@ export default function BookingForm({ link, advisor }: BookingFormProps) {
   const [availableTimeSlots, setAvailableTimeSlots] = useState<TimeSlot[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [bookingSuccess, setBookingSuccess] = useState(false);
   const [bookingStatus, setBookingStatus] = useState<{
     type: 'success' | 'error' | null;
     message: string;
@@ -273,6 +274,7 @@ export default function BookingForm({ link, advisor }: BookingFormProps) {
   useEffect(() => {
     if (selectedTime) {
       setValue("selectedTime", selectedTime);
+      setBookingSuccess(false);
     }
   }, [selectedTime, setValue]);
 
@@ -360,6 +362,7 @@ export default function BookingForm({ link, advisor }: BookingFormProps) {
         type: 'success',
         message: 'Meeting booked successfully!'
       });
+      setBookingSuccess(true);
       setCurrentStep(totalSteps);
     } catch (error) {
       console.error('Error booking meeting:', error);
@@ -593,7 +596,7 @@ export default function BookingForm({ link, advisor }: BookingFormProps) {
           ) : (
             <button
               type="submit"
-              disabled={isSubmitting || usageLimitInfo.isLimitReached}
+              disabled={isSubmitting || usageLimitInfo.isLimitReached || bookingSuccess}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
               {isSubmitting ? (
@@ -604,6 +607,8 @@ export default function BookingForm({ link, advisor }: BookingFormProps) {
                   </svg>
                   Booking...
                 </span>
+              ) : bookingSuccess ? (
+                "Booked Successfully"
               ) : (
                 "Book Meeting"
               )}

@@ -109,7 +109,7 @@ export async function sendConfirmationEmail(params: EmailParams): Promise<EmailR
     });
 
     const { data, error } = await resend.emails.send({
-      from: "Scheduling <scheduling@updates.alberttutorial.com>",
+      from: "Scheduling <scheduling@updates.jebessa.tech>",
       to: params.to,
       subject: `Meeting Confirmation: ${params.bookingDetails.hostName}`,
       html: `
@@ -385,7 +385,7 @@ export async function sendConfirmationEmail(params: EmailParams): Promise<EmailR
 
     return {
       id: data.id,
-      from: "Scheduling <scheduling@updates.alberttutorial.com>",
+      from: "Scheduling <scheduling@updates.jebessa.tech>",
       to: params.to,
       subject: `Meeting Confirmation: ${params.bookingDetails.hostName}`
     };
@@ -1039,14 +1039,14 @@ export async function sendAdvisorNotificationEmail(params: AdvisorNotificationPa
 
     // Send email to advisor
     const advisorEmailResult = await resend.emails.send({
-      from: "Scheduling <scheduling@updates.alberttutorial.com>",
+      from: "Scheduling <scheduling@updates.jebessa.tech>",
       to: params.advisorEmail,
       subject: `Meeting Confirmation: ${attendeeName}`,
       html: advisorEmailContent
     });
 
     const attendeeEmailResult = await resend.emails.send({
-      from: "Scheduling <scheduling@updates.alberttutorial.com>",
+      from: "Scheduling <scheduling@updates.jebessa.tech>",
       to: params.attendeeEmail,
       subject: `Meeting Confirmation: ${hostName}`,
       html: attendeeEmailContent
@@ -1057,7 +1057,7 @@ export async function sendAdvisorNotificationEmail(params: AdvisorNotificationPa
     }
 
     const response: EmailResponse = {
-      from: "Scheduling <scheduling@updates.alberttutorial.com>",
+      from: "Scheduling <scheduling@updates.jebessa.tech>",
       to: params.advisorEmail,
       subject: `Meeting Confirmation: ${attendeeName}`
     };

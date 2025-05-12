@@ -35,6 +35,7 @@ interface EnrichedAnswers {
   originalAnswers?: BookingAnswers[];
   linkedinData?: LinkedInData | null;
   linkedinUrl?: string;
+  augmentedAnswers?: string;
 }
 
 export interface LinkedInData {
@@ -99,6 +100,14 @@ interface AdvisorNotificationParams {
 
 export async function sendConfirmationEmail(params: EmailParams): Promise<EmailResponse> {
   try {
+    console.log('[Email Debug] Starting sendConfirmationEmail with params:', {
+      to: params.to,
+      hasEnrichedAnswers: !!params.enrichedAnswers,
+      enrichedAnswersKeys: params.enrichedAnswers ? Object.keys(params.enrichedAnswers) : [],
+      hasAugmentedAnswers: !!params.enrichedAnswers?.augmentedAnswers,
+      augmentedAnswersType: params.enrichedAnswers?.augmentedAnswers ? typeof params.enrichedAnswers.augmentedAnswers : 'undefined'
+    });
+
     const { data, error } = await resend.emails.send({
       from: "Scheduling <scheduling@updates.alberttutorial.com>",
       to: params.to,
@@ -114,6 +123,163 @@ export async function sendConfirmationEmail(params: EmailParams): Promise<EmailR
             <li style="margin-bottom: 10px;"><strong>Time:</strong> ${params.bookingDetails.startTime.toLocaleTimeString()} - ${params.bookingDetails.endTime.toLocaleTimeString()}</li>
             <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${params.bookingDetails.meetingLength} minutes</li>
           </ul>
+        </div>
+
+        <h2>Augmented Analysis:</h2>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          ${params.enrichedAnswers?.augmentedAnswers ? `
+            ${(() => {
+              try {
+                console.log('[Email Debug] Starting augmented answers processing');
+                console.log('[Email Debug] Raw enrichedAnswers:', {
+                  hasAugmentedAnswers: !!params.enrichedAnswers?.augmentedAnswers,
+                  type: typeof params.enrichedAnswers?.augmentedAnswers,
+                  value: params.enrichedAnswers?.augmentedAnswers
+                });
+
+                // Handle both string and object formats
+                const augmentedData = typeof params.enrichedAnswers.augmentedAnswers === 'string' 
+                  ? JSON.parse(params.enrichedAnswers.augmentedAnswers)
+                  : params.enrichedAnswers.augmentedAnswers;
+
+                console.log('[Email Debug] Parsed augmentedData:', {
+                  type: typeof augmentedData,
+                  isArray: Array.isArray(augmentedData),
+                  keys: Object.keys(augmentedData),
+                  value: augmentedData
+                });
+
+                // Handle array format from database
+                if (Array.isArray(augmentedData)) {
+                  console.log('[Email Debug] Processing array format:', {
+                    length: augmentedData.length,
+                    firstItem: augmentedData[0]
+                  });
+                  return augmentedData.map(item => {
+                    // Parse the answer string into components
+                    const parts = item.answer.split('\n\n');
+                    console.log('[Email Debug] Array item parts:', {
+                      question: item.question,
+                      parts: parts,
+                      originalAnswer: parts[0],
+                      context: parts[1],
+                      augmentedAnswer: parts[2]
+                    });
+                    
+                    const originalAnswer = parts[0].replace('Original Answer: ', '');
+                    const context = parts[1].replace('Context: ', '');
+                    const augmentedAnswer = parts[2].replace('Augmented Answer: ', '');
+                    
+                    return `
+                      <div style="margin-bottom: 20px;">
+                        <h3 style="color: #4a5568; margin-bottom: 10px;">${item.question}</h3>
+                        <div style="margin-bottom: 10px;">
+                          <strong>Original Answer:</strong>
+                          <div style="margin: 5px 0;">${originalAnswer}</div>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                          <strong>Context:</strong>
+                          <div style="margin: 5px 0;">${context}</div>
+                        </div>
+                        <div>
+                          <strong>Augmented Answer:</strong>
+                          <div style="margin: 5px 0;">${augmentedAnswer}</div>
+                        </div>
+                      </div>
+                    `;
+                  }).join('');
+                }
+                
+                // Handle AugmentedAnswersDetails format
+                if (augmentedData.originalAnswer && augmentedData.augmentedAnswer) {
+                  console.log('[Email Debug] Processing AugmentedAnswersDetails format:', {
+                    hasOriginalAnswer: true,
+                    hasAugmentedAnswer: true,
+                    originalAnswerType: typeof augmentedData.originalAnswer,
+                    augmentedAnswerType: typeof augmentedData.augmentedAnswer
+                  });
+
+                  try {
+                    const originalAnswers = JSON.parse(augmentedData.originalAnswer);
+                    const augmentedAnswers = JSON.parse(augmentedData.augmentedAnswer);
+                    
+                    console.log('[Email Debug] Parsed answers:', {
+                      originalAnswersLength: originalAnswers.length,
+                      augmentedAnswersLength: augmentedAnswers.length,
+                      firstOriginalAnswer: originalAnswers[0],
+                      firstAugmentedAnswer: augmentedAnswers[0]
+                    });
+                    
+                    return augmentedAnswers.map((item: any) => {
+                      const originalAnswer = originalAnswers.find((oa: any) => oa.question === item.question)?.answer || '';
+                      const parts = item.answer.split('\n\n');
+                      console.log('[Email Debug] Processing item:', {
+                        question: item.question,
+                        originalAnswer,
+                        parts,
+                        context: parts[1],
+                        augmentedAnswer: parts[2] || item.answer
+                      });
+                      
+                      // Parse the context JSON
+                      let contextText = '';
+                      try {
+                        const contextObj = JSON.parse(parts[1].replace('Context: ', ''));
+                        if (contextObj.hubspot?.notes?.length) {
+                          contextText = contextObj.hubspot.notes
+                            .map((note: any) => note.body.replace(/<[^>]*>/g, '').trim())
+                            .join('. ');
+                        }
+                      } catch (e) {
+                        console.error('[Email Debug] Error parsing context:', e);
+                        contextText = parts[1].replace('Context: ', '');
+                      }
+                      
+                      // Get the final augmented answer
+                      const augmentedAnswer = parts[2]?.replace('Augmented Answer: ', '') || 
+                        item.answer.split('Augmented Answer: ')[1] || 
+                        item.answer;
+                      
+                      return `
+                        <div style="margin-bottom: 20px;">
+                          <h3 style="color: #4a5568; margin-bottom: 10px;">${item.question}</h3>
+                          <div style="margin-bottom: 10px;">
+                            <strong>Original Answer:</strong>
+                            <div style="margin: 5px 0;">${originalAnswer}</div>
+                          </div>
+                          <div style="margin-bottom: 10px;">
+                            <strong>Context:</strong>
+                            <div style="margin: 5px 0;">${contextText}</div>
+                          </div>
+                          <div>
+                            <strong>Augmented Answer:</strong>
+                            <div style="margin: 5px 0;">${augmentedAnswer}</div>
+                          </div>
+                        </div>
+                      `;
+                    }).join('');
+                  } catch (parseError) {
+                    console.error('[Email Debug] Error parsing answers:', {
+                      error: parseError,
+                      originalAnswer: augmentedData.originalAnswer,
+                      augmentedAnswer: augmentedData.augmentedAnswer
+                    });
+                    throw parseError;
+                  }
+                }
+
+                console.error('[Email Debug] Unexpected augmented answers format:', augmentedData);
+                return '<p>Invalid augmented answers format</p>';
+              } catch (error) {
+                console.error('[Email Debug] Error in augmented answers processing:', {
+                  error: error instanceof Error ? error.message : 'Unknown error',
+                  stack: error instanceof Error ? error.stack : undefined,
+                  enrichedAnswers: params.enrichedAnswers
+                });
+                return '<p>Error displaying augmented analysis</p>';
+              }
+            })()}
+          ` : '<p>No augmented analysis available</p>'}
         </div>
 
         <h2>Your Responses:</h2>
@@ -230,9 +396,15 @@ export async function sendConfirmationEmail(params: EmailParams): Promise<EmailR
 }
 
 export async function sendAdvisorNotificationEmail(params: AdvisorNotificationParams): Promise<EmailResponse> {
-  console.log('Starting advisor notification email process...');
-  console.log('Initial LinkedIn data:', params.linkedinData);
-  console.log('Enriched answers:', params.enrichedAnswers);
+  console.log('[Email Debug] Starting sendAdvisorNotificationEmail with params:', {
+    attendeeEmail: params.attendeeEmail,
+    advisorEmail: params.advisorEmail,
+    hasEnrichedAnswers: !!params.enrichedAnswers,
+    enrichedAnswersKeys: params.enrichedAnswers ? Object.keys(params.enrichedAnswers) : [],
+    hasAugmentedAnswers: !!params.enrichedAnswers?.augmentedAnswers,
+    augmentedAnswersType: params.enrichedAnswers?.augmentedAnswers ? typeof params.enrichedAnswers.augmentedAnswers : 'undefined',
+    hasLinkedinData: !!params.linkedinData
+  });
 
   try {
     let finalLinkedInData = params.linkedinData;
@@ -240,7 +412,7 @@ export async function sendAdvisorNotificationEmail(params: AdvisorNotificationPa
 
     // If no LinkedIn data is provided but we have an email, try to fetch it
     if (!finalLinkedInData && params.attendeeEmail) {
-      console.log('No LinkedIn data provided, attempting to fetch from LinkedIn...');
+      console.log('[Email Debug] No LinkedIn data provided, attempting to fetch from LinkedIn...');
       
       // First try to get data from LinkedIn URL if available
       const linkedinUrl = params.enrichedAnswers?.linkedinUrl;
@@ -354,6 +526,163 @@ export async function sendAdvisorNotificationEmail(params: AdvisorNotificationPa
         </ul>
       </div>
 
+      <h2>Augmented Analysis:</h2>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        ${params.enrichedAnswers?.augmentedAnswers ? `
+          ${(() => {
+            try {
+              console.log('[Email Debug] Starting augmented answers processing');
+              console.log('[Email Debug] Raw enrichedAnswers:', {
+                hasAugmentedAnswers: !!params.enrichedAnswers?.augmentedAnswers,
+                type: typeof params.enrichedAnswers?.augmentedAnswers,
+                value: params.enrichedAnswers?.augmentedAnswers
+              });
+
+              // Handle both string and object formats
+              const augmentedData = typeof params.enrichedAnswers.augmentedAnswers === 'string' 
+                ? JSON.parse(params.enrichedAnswers.augmentedAnswers)
+                : params.enrichedAnswers.augmentedAnswers;
+
+              console.log('[Email Debug] Parsed augmentedData:', {
+                type: typeof augmentedData,
+                isArray: Array.isArray(augmentedData),
+                keys: Object.keys(augmentedData),
+                value: augmentedData
+              });
+
+              // Handle array format from database
+              if (Array.isArray(augmentedData)) {
+                console.log('[Email Debug] Processing array format:', {
+                  length: augmentedData.length,
+                  firstItem: augmentedData[0]
+                });
+                return augmentedData.map(item => {
+                  // Parse the answer string into components
+                  const parts = item.answer.split('\n\n');
+                  console.log('[Email Debug] Array item parts:', {
+                    question: item.question,
+                    parts: parts,
+                    originalAnswer: parts[0],
+                    context: parts[1],
+                    augmentedAnswer: parts[2]
+                  });
+                  
+                  const originalAnswer = parts[0].replace('Original Answer: ', '');
+                  const context = parts[1].replace('Context: ', '');
+                  const augmentedAnswer = parts[2].replace('Augmented Answer: ', '');
+                  
+                  return `
+                    <div style="margin-bottom: 20px;">
+                      <h3 style="color: #4a5568; margin-bottom: 10px;">${item.question}</h3>
+                      <div style="margin-bottom: 10px;">
+                        <strong>Original Answer:</strong>
+                        <div style="margin: 5px 0;">${originalAnswer}</div>
+                      </div>
+                      <div style="margin-bottom: 10px;">
+                        <strong>Context:</strong>
+                        <div style="margin: 5px 0;">${context}</div>
+                      </div>
+                      <div>
+                        <strong>Augmented Answer:</strong>
+                        <div style="margin: 5px 0;">${augmentedAnswer}</div>
+                      </div>
+                    </div>
+                  `;
+                }).join('');
+              }
+              
+              // Handle AugmentedAnswersDetails format
+              if (augmentedData.originalAnswer && augmentedData.augmentedAnswer) {
+                console.log('[Email Debug] Processing AugmentedAnswersDetails format:', {
+                  hasOriginalAnswer: true,
+                  hasAugmentedAnswer: true,
+                  originalAnswerType: typeof augmentedData.originalAnswer,
+                  augmentedAnswerType: typeof augmentedData.augmentedAnswer
+                });
+
+                try {
+                  const originalAnswers = JSON.parse(augmentedData.originalAnswer);
+                  const augmentedAnswers = JSON.parse(augmentedData.augmentedAnswer);
+                  
+                  console.log('[Email Debug] Parsed answers:', {
+                    originalAnswersLength: originalAnswers.length,
+                    augmentedAnswersLength: augmentedAnswers.length,
+                    firstOriginalAnswer: originalAnswers[0],
+                    firstAugmentedAnswer: augmentedAnswers[0]
+                  });
+                  
+                  return augmentedAnswers.map((item: any) => {
+                    const originalAnswer = originalAnswers.find((oa: any) => oa.question === item.question)?.answer || '';
+                    const parts = item.answer.split('\n\n');
+                    console.log('[Email Debug] Processing item:', {
+                      question: item.question,
+                      originalAnswer,
+                      parts,
+                      context: parts[1],
+                      augmentedAnswer: parts[2] || item.answer
+                    });
+                    
+                    // Parse the context JSON
+                    let contextText = '';
+                    try {
+                      const contextObj = JSON.parse(parts[1].replace('Context: ', ''));
+                      if (contextObj.hubspot?.notes?.length) {
+                        contextText = contextObj.hubspot.notes
+                          .map((note: any) => note.body.replace(/<[^>]*>/g, '').trim())
+                          .join('. ');
+                      }
+                    } catch (e) {
+                      console.error('[Email Debug] Error parsing context:', e);
+                      contextText = parts[1].replace('Context: ', '');
+                    }
+                    
+                    // Get the final augmented answer
+                    const augmentedAnswer = parts[2]?.replace('Augmented Answer: ', '') || 
+                      item.answer.split('Augmented Answer: ')[1] || 
+                      item.answer;
+                    
+                    return `
+                      <div style="margin-bottom: 20px;">
+                        <h3 style="color: #4a5568; margin-bottom: 10px;">${item.question}</h3>
+                        <div style="margin-bottom: 10px;">
+                          <strong>Original Answer:</strong>
+                          <div style="margin: 5px 0;">${originalAnswer}</div>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                          <strong>Context:</strong>
+                          <div style="margin: 5px 0;">${contextText}</div>
+                        </div>
+                        <div>
+                          <strong>Augmented Answer:</strong>
+                          <div style="margin: 5px 0;">${augmentedAnswer}</div>
+                        </div>
+                      </div>
+                    `;
+                  }).join('');
+                } catch (parseError) {
+                  console.error('[Email Debug] Error parsing answers:', {
+                    error: parseError,
+                    originalAnswer: augmentedData.originalAnswer,
+                    augmentedAnswer: augmentedData.augmentedAnswer
+                  });
+                  throw parseError;
+                }
+              }
+
+              console.error('[Email Debug] Unexpected augmented answers format:', augmentedData);
+              return '<p>Invalid augmented answers format</p>';
+            } catch (error) {
+              console.error('[Email Debug] Error in augmented answers processing:', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                stack: error instanceof Error ? error.stack : undefined,
+                enrichedAnswers: params.enrichedAnswers
+              });
+              return '<p>Error displaying augmented analysis</p>';
+            }
+          })()}
+        ` : '<p>No augmented analysis available</p>'}
+      </div>
+
       <h2>Attendee Responses:</h2>
       <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
         ${params.enrichedAnswers?.originalAnswers ? `
@@ -458,6 +787,163 @@ export async function sendAdvisorNotificationEmail(params: AdvisorNotificationPa
           <li style="margin-bottom: 10px;"><strong>Duration:</strong> ${bookingDetails.meetingLength} minutes</li>
           <li style="margin-bottom: 10px;"><strong>Host Email:</strong> ${params.advisorEmail}</li>
         </ul>
+      </div>
+
+      <h2>Augmented Analysis:</h2>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        ${params.enrichedAnswers?.augmentedAnswers ? `
+          ${(() => {
+            try {
+              console.log('[Email Debug] Starting augmented answers processing');
+              console.log('[Email Debug] Raw enrichedAnswers:', {
+                hasAugmentedAnswers: !!params.enrichedAnswers?.augmentedAnswers,
+                type: typeof params.enrichedAnswers?.augmentedAnswers,
+                value: params.enrichedAnswers?.augmentedAnswers
+              });
+
+              // Handle both string and object formats
+              const augmentedData = typeof params.enrichedAnswers.augmentedAnswers === 'string' 
+                ? JSON.parse(params.enrichedAnswers.augmentedAnswers)
+                : params.enrichedAnswers.augmentedAnswers;
+
+              console.log('[Email Debug] Parsed augmentedData:', {
+                type: typeof augmentedData,
+                isArray: Array.isArray(augmentedData),
+                keys: Object.keys(augmentedData),
+                value: augmentedData
+              });
+
+              // Handle array format from database
+              if (Array.isArray(augmentedData)) {
+                console.log('[Email Debug] Processing array format:', {
+                  length: augmentedData.length,
+                  firstItem: augmentedData[0]
+                });
+                return augmentedData.map(item => {
+                  // Parse the answer string into components
+                  const parts = item.answer.split('\n\n');
+                  console.log('[Email Debug] Array item parts:', {
+                    question: item.question,
+                    parts: parts,
+                    originalAnswer: parts[0],
+                    context: parts[1],
+                    augmentedAnswer: parts[2]
+                  });
+                  
+                  const originalAnswer = parts[0].replace('Original Answer: ', '');
+                  const context = parts[1].replace('Context: ', '');
+                  const augmentedAnswer = parts[2].replace('Augmented Answer: ', '');
+                  
+                  return `
+                    <div style="margin-bottom: 20px;">
+                      <h3 style="color: #4a5568; margin-bottom: 10px;">${item.question}</h3>
+                      <div style="margin-bottom: 10px;">
+                        <strong>Original Answer:</strong>
+                        <div style="margin: 5px 0;">${originalAnswer}</div>
+                      </div>
+                      <div style="margin-bottom: 10px;">
+                        <strong>Context:</strong>
+                        <div style="margin: 5px 0;">${context}</div>
+                      </div>
+                      <div>
+                        <strong>Augmented Answer:</strong>
+                        <div style="margin: 5px 0;">${augmentedAnswer}</div>
+                      </div>
+                    </div>
+                  `;
+                }).join('');
+              }
+              
+              // Handle AugmentedAnswersDetails format
+              if (augmentedData.originalAnswer && augmentedData.augmentedAnswer) {
+                console.log('[Email Debug] Processing AugmentedAnswersDetails format:', {
+                  hasOriginalAnswer: true,
+                  hasAugmentedAnswer: true,
+                  originalAnswerType: typeof augmentedData.originalAnswer,
+                  augmentedAnswerType: typeof augmentedData.augmentedAnswer
+                });
+
+                try {
+                  const originalAnswers = JSON.parse(augmentedData.originalAnswer);
+                  const augmentedAnswers = JSON.parse(augmentedData.augmentedAnswer);
+                  
+                  console.log('[Email Debug] Parsed answers:', {
+                    originalAnswersLength: originalAnswers.length,
+                    augmentedAnswersLength: augmentedAnswers.length,
+                    firstOriginalAnswer: originalAnswers[0],
+                    firstAugmentedAnswer: augmentedAnswers[0]
+                  });
+                  
+                  return augmentedAnswers.map((item: any) => {
+                    const originalAnswer = originalAnswers.find((oa: any) => oa.question === item.question)?.answer || '';
+                    const parts = item.answer.split('\n\n');
+                    console.log('[Email Debug] Processing item:', {
+                      question: item.question,
+                      originalAnswer,
+                      parts,
+                      context: parts[1],
+                      augmentedAnswer: parts[2] || item.answer
+                    });
+                    
+                    // Parse the context JSON
+                    let contextText = '';
+                    try {
+                      const contextObj = JSON.parse(parts[1].replace('Context: ', ''));
+                      if (contextObj.hubspot?.notes?.length) {
+                        contextText = contextObj.hubspot.notes
+                          .map((note: any) => note.body.replace(/<[^>]*>/g, '').trim())
+                          .join('. ');
+                      }
+                    } catch (e) {
+                      console.error('[Email Debug] Error parsing context:', e);
+                      contextText = parts[1].replace('Context: ', '');
+                    }
+                    
+                    // Get the final augmented answer
+                    const augmentedAnswer = parts[2]?.replace('Augmented Answer: ', '') || 
+                      item.answer.split('Augmented Answer: ')[1] || 
+                      item.answer;
+                    
+                    return `
+                      <div style="margin-bottom: 20px;">
+                        <h3 style="color: #4a5568; margin-bottom: 10px;">${item.question}</h3>
+                        <div style="margin-bottom: 10px;">
+                          <strong>Original Answer:</strong>
+                          <div style="margin: 5px 0;">${originalAnswer}</div>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                          <strong>Context:</strong>
+                          <div style="margin: 5px 0;">${contextText}</div>
+                        </div>
+                        <div>
+                          <strong>Augmented Answer:</strong>
+                          <div style="margin: 5px 0;">${augmentedAnswer}</div>
+                        </div>
+                      </div>
+                    `;
+                  }).join('');
+                } catch (parseError) {
+                  console.error('[Email Debug] Error parsing answers:', {
+                    error: parseError,
+                    originalAnswer: augmentedData.originalAnswer,
+                    augmentedAnswer: augmentedData.augmentedAnswer
+                  });
+                  throw parseError;
+                }
+              }
+
+              console.error('[Email Debug] Unexpected augmented answers format:', augmentedData);
+              return '<p>Invalid augmented answers format</p>';
+            } catch (error) {
+              console.error('[Email Debug] Error in augmented answers processing:', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                stack: error instanceof Error ? error.stack : undefined,
+                enrichedAnswers: params.enrichedAnswers
+              });
+              return '<p>Error displaying augmented analysis</p>';
+            }
+          })()}
+        ` : '<p>No augmented analysis available</p>'}
       </div>
 
       <h2>Your Responses:</h2>

@@ -42,8 +42,13 @@ type EnrichedBookingData = {
 } & Record<string, unknown>;
 
 export async function POST(req: Request) {
+  console.log("[Route Debug] POST /api/booking-confirm called");
   try {
-    console.log("Starting booking confirmation process");
+    const body = await req.json();
+    console.log("[Route Debug] Request body:", {
+      hasBody: !!body,
+      keys: Object.keys(body)
+    });
     
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -51,9 +56,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    console.log("Request body:", { ...body, answers: body.answers ? "present" : "missing" });
-    
     const { email, linkedinUrl, answers, bookingId } = body;
 
     if (!email || !linkedinUrl || !answers || !bookingId) {
@@ -246,61 +248,6 @@ export async function POST(req: Request) {
       stage: deal.stage || 'Unknown'
     })) || [];
 
-    try {
-      console.log("Attempting to send confirmation email with data:", {
-        email,
-        bookingDetails: {
-          startTime,
-          endTime,
-          meetingLength: booking.schedulingLink.meetingLength,
-          hostName: booking.schedulingLink.user.name,
-          hostEmail: booking.schedulingLink.user.email,
-        },
-        enrichedAnswers: {
-          ...enrichedAnswers,
-          originalAnswers: answers,
-          notes: processedNotes,
-          deals: processedDeals,
-          linkedinData
-        }
-      });
-      // Send notification email to both advisor and attendee
-      await sendAdvisorNotificationEmail({
-        attendeeEmail: email,
-        advisorEmail: booking.schedulingLink.user.email || '',
-        scheduledTime: new Date(booking.scheduledTime),
-        bookingId,
-        linkedinData,
-        enrichedAnswers: {
-          ...enrichedAnswers,
-          originalAnswers: answers,
-          notes: processedNotes,
-          deals: processedDeals,
-          name: hubspotContact?.properties.firstname 
-            ? `${hubspotContact.properties.firstname} ${hubspotContact.properties.lastname || ''}`
-            : linkedinData?.name || email,
-          duration: `${booking.schedulingLink.meetingLength} minutes`,
-          hostName: booking.schedulingLink.user.name || 'Your host'
-        },
-        attendeeName: hubspotContact?.properties.firstname 
-          ? `${hubspotContact.properties.firstname} ${hubspotContact.properties.lastname || ''}`
-          : linkedinData?.name || email,
-        hostName: booking.schedulingLink.user.name || 'Your host',
-        bookingDetails: {
-          startTime: new Date(booking.scheduledTime),
-          endTime: new Date(booking.scheduledTime.getTime() + booking.schedulingLink.meetingLength * 60000),
-          meetingLength: booking.schedulingLink.meetingLength,
-          hostName: booking.schedulingLink.user.name || 'Your host',
-          hostEmail: booking.schedulingLink.user.email || '',
-          attendeeEmail: email
-        }
-      });
-      console.log("Sent notification emails to both advisor and attendee");
-    } catch (error) {
-      console.error("Error sending notification emails:", error);
-      throw error;
-    }
-
     // Get HubSpot access token
     const { accessToken } = await getHubspotClient(booking.schedulingLink.user.id);
 
@@ -360,7 +307,71 @@ export async function POST(req: Request) {
       }
     });
 
+    try {
+      console.log("[Route Debug] Starting email sending process");
+      console.log("[Route Debug] Booking data:", {
+        bookingId,
+        email,
+        hostEmail: booking.schedulingLink.user.email,
+        hostName: booking.schedulingLink.user.name,
+        scheduledTime: booking.scheduledTime
+      });
 
+      console.log("[Route Debug] Enriched answers data:", {
+        hasEnrichedAnswers: !!finalEnrichedAnswers,
+        enrichedAnswersKeys: finalEnrichedAnswers ? Object.keys(finalEnrichedAnswers) : [],
+        hasAugmentedAnswers: !!finalEnrichedAnswers?.augmentedAnswers,
+        augmentedAnswersType: finalEnrichedAnswers?.augmentedAnswers ? typeof finalEnrichedAnswers.augmentedAnswers : 'undefined',
+        originalAnswersCount: answers.length,
+        notesCount: processedNotes.length,
+        dealsCount: processedDeals.length,
+        hasLinkedinData: !!linkedinData
+      });
+
+      // Send notification email to both advisor and attendee
+      console.log("[Route Debug] About to call sendAdvisorNotificationEmail");
+      await sendAdvisorNotificationEmail({
+        attendeeEmail: email,
+        advisorEmail: booking.schedulingLink.user.email || '',
+        scheduledTime: new Date(booking.scheduledTime),
+        bookingId,
+        linkedinData,
+        enrichedAnswers: {
+          ...finalEnrichedAnswers,
+          originalAnswers: answers,
+          notes: processedNotes,
+          deals: processedDeals,
+          name: hubspotContact?.properties.firstname 
+            ? `${hubspotContact.properties.firstname} ${hubspotContact.properties.lastname || ''}`
+            : linkedinData?.name || email,
+          duration: `${booking.schedulingLink.meetingLength} minutes`,
+          hostName: booking.schedulingLink.user.name || 'Your host',
+          augmentedAnswers: JSON.stringify({
+            originalAnswer: JSON.stringify(answers),
+            augmentedAnswer: JSON.stringify(augmentedAnswersDetails.map(a => ({
+              question: a.question,
+              answer: `Original Answer: ${a.originalAnswer}\n\nContext: ${JSON.stringify(a.context)}\n\nAugmented Answer: ${a.augmentedAnswer}`
+            })))
+          })
+        },
+        attendeeName: hubspotContact?.properties.firstname 
+          ? `${hubspotContact.properties.firstname} ${hubspotContact.properties.lastname || ''}`
+          : linkedinData?.name || email,
+        hostName: booking.schedulingLink.user.name || 'Your host',
+        bookingDetails: {
+          startTime: new Date(booking.scheduledTime),
+          endTime: new Date(booking.scheduledTime.getTime() + booking.schedulingLink.meetingLength * 60000),
+          meetingLength: booking.schedulingLink.meetingLength,
+          hostName: booking.schedulingLink.user.name || 'Your host',
+          hostEmail: booking.schedulingLink.user.email || '',
+          attendeeEmail: email
+        }
+      });
+      console.log("[Route Debug] Sent notification emails to both advisor and attendee");
+    } catch (error) {
+      console.error("Error sending notification emails:", error);
+      throw error;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -72,7 +72,7 @@ export function BookingDetails({ booking }: { booking: Booking }) {
     if (answers.linkedinData?.title) {
       return answers.linkedinData.title;
     }
-    return "Meeting details available - click to expand";
+    return "Meeting";
   };
 
   const getAugmentedContext = () => {

@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { searchHubspotContact, getHubspotClient } from "@/lib/hubspot";
 import { linkedInService } from "@/lib/linkedin";
@@ -35,12 +33,6 @@ export async function POST(req: Request) {
       keys: Object.keys(body)
     });
     
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.log("No session found");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { email, linkedinUrl, answers, bookingId } = body;
 
     if (!email || !linkedinUrl || !answers || !bookingId) {
@@ -75,12 +67,18 @@ export async function POST(req: Request) {
 
     // Get HubSpot client for the user
     let hubspotContact = null;
+    let accessToken = null;
     try {
-      const { accessToken } = await getHubspotClient(booking.schedulingLink.user.id);
-      hubspotContact = await searchHubspotContact(email, accessToken);
-      console.log("HubSpot contact search result:", hubspotContact ? "found" : "not found");
+      const hubspotClient = await getHubspotClient(booking.schedulingLink.user.id);
+      if (hubspotClient?.accessToken) {
+        accessToken = hubspotClient.accessToken;
+        hubspotContact = await searchHubspotContact(email, accessToken);
+        console.log("HubSpot contact search result:", hubspotContact ? "found" : "not found");
+      } else {
+        console.log("No HubSpot access token available - proceeding without HubSpot data");
+      }
     } catch (error) {
-      console.error("Error searching HubSpot contact:", error);
+      console.error("Error with HubSpot integration:", error);
       // Continue without HubSpot data
     }
 
@@ -233,8 +231,17 @@ export async function POST(req: Request) {
       stage: deal.stage || 'Unknown'
     })) || [];
 
-    // Get HubSpot access token
-    const { accessToken } = await getHubspotClient(booking.schedulingLink.user.id);
+    // Get HubSpot access token - make it optional
+    let hubspotAccessToken = null;
+    try {
+      const hubspotClient = await getHubspotClient(booking.schedulingLink.user.id);
+      if (hubspotClient?.accessToken) {
+        hubspotAccessToken = hubspotClient.accessToken;
+      }
+    } catch (error) {
+      console.error("Error getting HubSpot access token:", error);
+      // Continue without HubSpot token
+    }
 
     // Augment answers using OpenAI with context
     console.log("Starting OpenAI augmentation with:", {
@@ -247,7 +254,7 @@ export async function POST(req: Request) {
       answers,
       email,
       linkedinUrl,
-      accessToken
+      hubspotAccessToken || undefined
     );
 
     console.log("Received augmented answers:", {

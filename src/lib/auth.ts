@@ -154,7 +154,7 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
-    async jwt({ token, user, account }) {
+    async jwt({ token, user }) {
       console.log("JWT callback:", { 
         token: { sub: token.sub },
         user: { id: user?.id, email: user?.email }
@@ -172,7 +172,7 @@ export const authOptions: NextAuthOptions = {
   },
   debug: true,
   events: {
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account }) {
       console.log("Sign in event:", { 
         userId: user.id,
         email: user.email,

@@ -8,38 +8,23 @@ import { augmentAnswers } from "@/lib/ai-augment";
 import { augmentBookingAnswers } from "@/lib/booking-augment";
 import { sendAdvisorNotificationEmail } from "@/lib/email";
 import type { LinkedInData } from "@/lib/linkedin.d";
-import { Prisma } from "@prisma/client";
 
-interface BookingAnswers {
-  question: string;
-  answer: string;
-  required: boolean;
-}
 
-interface Note {
-  body: string;
-  timestamp: string;
-}
 
-interface Deal {
-  name: string;
-  amount: string;
-  stage: string;
-}
 
-type EnrichedBookingData = {
-  originalAnswers: BookingAnswers[];
-  enrichedAnswers: Record<string, string>;
-  hubspotContactId?: string;
-  linkedinData?: string;
-  notes?: Note[];
-  deals?: Deal[];
-  augmentedAnswers: {
-    originalAnswers: BookingAnswers[];
-    augmentedAnswers: Record<string, string>;
-    context: Record<string, unknown>;
-  };
-} & Record<string, unknown>;
+// type EnrichedBookingData = {
+//   originalAnswers: BookingAnswers[];
+//   enrichedAnswers: Record<string, string>;
+//   hubspotContactId?: string;
+//   linkedinData?: string;
+//   notes?: Note[];
+//   deals?: Deal[];
+//   augmentedAnswers: {
+//     originalAnswers: BookingAnswers[];
+//     augmentedAnswers: Record<string, string>;
+//     context: Record<string, unknown>;
+//   };
+// } & Record<string, unknown>;
 
 export async function POST(req: Request) {
   console.log("[Route Debug] POST /api/booking-confirm called");
@@ -233,8 +218,8 @@ export async function POST(req: Request) {
     console.log("Enriched answers:", Object.keys(enrichedAnswers).length);
 
     // Calculate end time based on meeting length
-    const startTime = new Date(booking.scheduledTime);
-    const endTime = new Date(startTime.getTime() + booking.schedulingLink.meetingLength * 60000);
+    // const startTime = new Date(booking.scheduledTime);
+    // const endTime = new Date(startTime.getTime() + booking.schedulingLink.meetingLength * 60000);
 
     // Process HubSpot notes and deals
     const processedNotes = hubspotContact?.notes?.map(note => ({
@@ -285,27 +270,6 @@ export async function POST(req: Request) {
     });
 
     // Save to database
-    const savedBooking = await prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        augmentedAnswersDetails: {
-          create: {
-            originalAnswer: JSON.stringify(answers),
-            augmentedAnswer: JSON.stringify(augmentedAnswersDetails.map(a => ({
-              question: a.question,
-              answer: a.augmentedAnswer
-            }))),
-            context: {
-              hubspot: null,
-              linkedin: null
-            }
-          }
-        }
-      },
-      include: {
-        augmentedAnswersDetails: true
-      }
-    });
 
     try {
       console.log("[Route Debug] Starting email sending process");

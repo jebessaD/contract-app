@@ -39,7 +39,7 @@ interface Booking {
     originalAnswer: string;
     augmentedAnswer: string;
     context: any;
-  };
+  } | null;
 }
 
 export function BookingDetails({ booking }: { booking: Booking }) {
@@ -101,7 +101,7 @@ export function BookingDetails({ booking }: { booking: Booking }) {
 
   return (
     <div className="mt-2">
-      <div className="text-sm text-gray-600">
+      <div className="text-sm text-gray-600 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
         {getSummaryText()}
       </div>
 

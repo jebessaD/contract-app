@@ -202,7 +202,7 @@ export async function POST(req: Request) {
         duration: exp.duration,
         description: exp.description
       })),
-      skills: linkedinData.skills,
+      skills: linkedinData.skills?.filter(skill => skill !== undefined && skill !== null) || [],
       education: linkedinData.education?.map(edu => ({
         school: edu.school,
         degree_name: edu.degree_name,

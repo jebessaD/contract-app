@@ -56,7 +56,10 @@ export function BookingDetails({ booking }: { booking: Booking }) {
         if (Array.isArray(parsed) && parsed[0]?.augmentedAnswer) {
           const fullAnswer = parsed[0].augmentedAnswer;
           const match = fullAnswer.match(/Augmented Answer: (.*?)(?:\n|$)/);
-          return match ? match[1].trim() : fullAnswer;
+          if (match) {
+            return match[1].trim();
+          }
+          return fullAnswer;
         }
       } catch (e) {
         console.error('Failed to parse augmented answer:', e);
@@ -70,6 +73,20 @@ export function BookingDetails({ booking }: { booking: Booking }) {
       return answers.linkedinData.title;
     }
     return "Meeting details available - click to expand";
+  };
+
+  const getAugmentedContext = () => {
+    if (!booking.augmentedAnswersDetails?.augmentedAnswer) return null;
+    
+    try {
+      const parsed = JSON.parse(booking.augmentedAnswersDetails.augmentedAnswer);
+      if (Array.isArray(parsed) && parsed[0]?.context) {
+        return parsed[0].context;
+      }
+    } catch (e) {
+      console.error('Failed to parse augmented context:', e);
+    }
+    return null;
   };
 
   const sanitizeHtml = (html: string) => {
@@ -137,6 +154,35 @@ export function BookingDetails({ booking }: { booking: Booking }) {
               <p className="text-gray-600">
                 {getSummaryText()}
               </p>
+              
+              {/* LinkedIn Context */}
+              {getAugmentedContext()?.linkedin && (
+                <div className="mt-2">
+                  <p className="font-medium text-gray-700">LinkedIn Context</p>
+                  <div className="text-gray-600">
+                    {getAugmentedContext()?.linkedin?.skills && (
+                      <p>Skills: {getAugmentedContext()?.linkedin?.skills.join(', ')}</p>
+                    )}
+                    {getAugmentedContext()?.linkedin?.experiences?.[0] && (
+                      <p>Current Role: {getAugmentedContext()?.linkedin?.experiences[0].title} at {getAugmentedContext()?.linkedin?.experiences[0].company}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* HubSpot Context */}
+              {getAugmentedContext()?.hubspot && (
+                <div className="mt-2">
+                  <p className="font-medium text-gray-700">HubSpot Context</p>
+                  <div className="text-gray-600">
+                    {getAugmentedContext()?.hubspot?.notes?.map((note: any, index: number) => (
+                      <p key={index} className="mt-1">
+                        {sanitizeHtml(note.body)}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

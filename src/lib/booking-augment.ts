@@ -62,12 +62,14 @@ export async function augmentBookingAnswers(
     hubspotContext = await searchHubspotContact(email, hubspotAccessToken);
   }
 
-  // Get LinkedIn context
+  // Get LinkedIn context only if Hubspot context is not available
   let linkedinContext = null;
-  try {
-    linkedinContext = await linkedInService.getEmployeeProfile(linkedinUrl);
-  } catch (error) {
-    console.error("Error fetching LinkedIn profile:", error);
+  if (!hubspotContext && linkedinUrl) {
+    try {
+      linkedinContext = await linkedInService.getEmployeeProfile(linkedinUrl);
+    } catch (error) {
+      console.error("Error fetching LinkedIn profile:", error);
+    }
   }
 
   // Augment answers using OpenAI

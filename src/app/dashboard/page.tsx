@@ -257,11 +257,11 @@ export default async function DashboardPage() {
                 <span className="text-gray-600">Available</span>
               </div>
               <div className="flex items-center">
-                <div className="w-4 h-4 bg-red-100 rounded mr-2" />
+                <div className="w-4 h-4 bg-red-200 rounded mr-2" />
                 <span className="text-gray-600">Busy</span>
               </div>
               <div className="flex items-center">
-                <div className="w-4 h-4 bg-purple-100 rounded mr-2" />
+                <div className="w-4 h-4 bg-purple-200 rounded mr-2" />
                 <span className="text-gray-600">Booked</span>
               </div>
             </div>

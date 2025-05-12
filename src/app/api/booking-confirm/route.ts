@@ -270,6 +270,31 @@ export async function POST(req: Request) {
     });
 
     // Save to database
+    try {
+      // Update the booking with augmented answers
+      await prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          augmentedAnswers: finalEnrichedAnswers,
+          augmentedAnswersDetails: {
+            create: {
+              originalAnswer: JSON.stringify(answers),
+              augmentedAnswer: JSON.stringify(augmentedAnswersDetails),
+              context: {
+                hubspotContact: normalizedHubspotContact,
+                linkedinData: normalizedLinkedinData,
+                notes: processedNotes,
+                deals: processedDeals
+              }
+            }
+          }
+        }
+      });
+      console.log("[Route Debug] Successfully saved augmented answers to database");
+    } catch (error) {
+      console.error("Error saving to database:", error);
+      throw error;
+    }
 
     try {
       console.log("[Route Debug] Starting email sending process");
